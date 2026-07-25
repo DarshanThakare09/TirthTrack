@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-
+import 'App_Routes.dart';
 void main() {
   runApp(const MainApp());
 }
@@ -9,13 +9,11 @@ class MainApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
+      title: "TirthTrack",
       debugShowCheckedModeBanner: false,
-      home: Scaffold(
-        body: Center(
-          child: Text('Hello World!'),
-        ),
-      ),
+      routes: AppRoutes().routes,
+      initialRoute: AppRoutes().splashScreen,
     );
   }
 }

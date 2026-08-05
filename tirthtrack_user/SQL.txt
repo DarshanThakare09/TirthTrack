@@ -1,0 +1,2303 @@
+-- ============================================================
+-- TirthTrack
+-- Phase 1.2 - SQL Migration (Part 1)
+--
+-- Contains:
+-- • Extensions
+-- • Enums
+-- • Core Tables
+-- • Indexes
+-- • Constraints
+--
+-- Safe to execute on a fresh Supabase database.
+-- ============================================================
+
+BEGIN;
+
+-- ============================================================
+-- EXTENSIONS
+-- ============================================================
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- Optional (recommended for future GIS support)
+CREATE EXTENSION IF NOT EXISTS postgis;
+
+-- ============================================================
+-- ENUMS
+-- ============================================================
+
+CREATE TYPE gender_enum AS ENUM (
+    'male',
+    'female',
+    'other'
+);
+
+CREATE TYPE user_role_enum AS ENUM (
+    'user',
+    'police',
+    'admin'
+);
+
+CREATE TYPE police_status_enum AS ENUM (
+    'pending',
+    'verified',
+    'rejected'
+);
+
+CREATE TYPE location_source_enum AS ENUM (
+    'gps',
+    'network',
+    'manual'
+);
+
+-- ============================================================
+-- PROFILES
+-- ============================================================
+
+CREATE TABLE profiles (
+
+    id UUID PRIMARY KEY
+        REFERENCES auth.users(id)
+        ON DELETE CASCADE,
+
+    full_name TEXT NOT NULL,
+
+    mobile VARCHAR(15)
+        UNIQUE,
+
+    email TEXT
+        UNIQUE,
+
+    gender gender_enum,
+
+    date_of_birth DATE,
+
+    profile_photo TEXT,
+
+    address TEXT,
+
+    city TEXT,
+
+    state TEXT,
+
+    country TEXT
+        DEFAULT 'India',
+
+    role user_role_enum
+        NOT NULL
+        DEFAULT 'user',
+
+    is_active BOOLEAN
+        NOT NULL
+        DEFAULT TRUE,
+
+    created_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW(),
+
+    updated_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW()
+
+);
+
+-- ============================================================
+-- POLICE DETAILS
+-- ============================================================
+
+CREATE TABLE police_details (
+
+    id UUID PRIMARY KEY
+        DEFAULT gen_random_uuid(),
+
+    profile_id UUID
+        NOT NULL
+        UNIQUE
+        REFERENCES profiles(id)
+        ON DELETE CASCADE,
+
+    badge_number VARCHAR(50)
+        NOT NULL
+        UNIQUE,
+
+    police_station TEXT
+        NOT NULL,
+
+    district TEXT
+        NOT NULL,
+
+    state TEXT
+        NOT NULL,
+
+    designation TEXT,
+
+    department TEXT,
+
+    id_card_photo TEXT,
+
+    verification_status police_status_enum
+        NOT NULL
+        DEFAULT 'pending',
+
+    verified_by UUID,
+
+    verified_at TIMESTAMPTZ,
+
+    remarks TEXT,
+
+    created_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW(),
+
+    updated_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW()
+
+);
+
+-- ============================================================
+-- ADMIN DETAILS
+-- ============================================================
+
+CREATE TABLE admin_details (
+
+    id UUID PRIMARY KEY
+        DEFAULT gen_random_uuid(),
+
+    profile_id UUID
+        NOT NULL
+        UNIQUE
+        REFERENCES profiles(id)
+        ON DELETE CASCADE,
+
+    employee_code VARCHAR(50)
+        UNIQUE,
+
+    designation TEXT,
+
+    permissions JSONB
+        DEFAULT '{}'::jsonb,
+
+    created_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW(),
+
+    updated_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW()
+
+);
+
+-- ============================================================
+-- LIVE LOCATIONS
+-- ============================================================
+
+CREATE TABLE live_locations (
+
+    id UUID PRIMARY KEY
+        DEFAULT gen_random_uuid(),
+
+    profile_id UUID
+        NOT NULL
+        REFERENCES profiles(id)
+        ON DELETE CASCADE,
+
+    latitude DOUBLE PRECISION
+        NOT NULL,
+
+    longitude DOUBLE PRECISION
+        NOT NULL,
+
+    accuracy DOUBLE PRECISION,
+
+    altitude DOUBLE PRECISION,
+
+    speed DOUBLE PRECISION,
+
+    heading DOUBLE PRECISION,
+
+    battery_percentage SMALLINT,
+
+    location_source location_source_enum
+        DEFAULT 'gps',
+
+    recorded_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW(),
+
+    CONSTRAINT battery_percentage_check
+        CHECK (
+            battery_percentage IS NULL
+            OR
+            (battery_percentage BETWEEN 0 AND 100)
+        )
+
+);
+
+-- ============================================================
+-- INDEXES
+-- ============================================================
+
+CREATE INDEX idx_profiles_mobile
+ON profiles(mobile);
+
+CREATE INDEX idx_profiles_email
+ON profiles(email);
+
+CREATE INDEX idx_profiles_role
+ON profiles(role);
+
+CREATE INDEX idx_police_profile
+ON police_details(profile_id);
+
+CREATE INDEX idx_police_station
+ON police_details(police_station);
+
+CREATE INDEX idx_police_status
+ON police_details(verification_status);
+
+CREATE INDEX idx_admin_profile
+ON admin_details(profile_id);
+
+CREATE INDEX idx_live_locations_profile
+ON live_locations(profile_id);
+
+CREATE INDEX idx_live_locations_time
+ON live_locations(recorded_at DESC);
+
+CREATE INDEX idx_live_locations_profile_time
+ON live_locations(profile_id, recorded_at DESC);
+
+CREATE INDEX idx_live_locations_coordinates
+ON live_locations(latitude, longitude);
+
+-- ============================================================
+-- FOREIGN KEY
+-- (verified_by references admin_details)
+-- Added after table creation to avoid dependency issues.
+-- ============================================================
+
+ALTER TABLE police_details
+ADD CONSTRAINT fk_police_verified_by
+FOREIGN KEY (verified_by)
+REFERENCES admin_details(id)
+ON DELETE SET NULL;
+
+-- ============================================================
+-- COMMENTS
+-- ============================================================
+
+COMMENT ON TABLE profiles IS
+'Stores user profile information.';
+
+COMMENT ON TABLE police_details IS
+'Stores police verification details.';
+
+COMMENT ON TABLE admin_details IS
+'Stores administrator information.';
+
+COMMENT ON TABLE live_locations IS
+'Stores real-time GPS locations.';
+
+COMMIT;-- ============================================================
+-- TirthTrack
+-- Phase 1.3 - SQL Migration (Part 2)
+--
+-- Maps Module
+--
+-- Tables:
+-- • routes
+-- • route_nodes
+-- • services
+-- • police_bases
+-- • sectors
+-- • sector_nodes
+--
+-- Requires:
+-- • 001_initial_core_schema.sql
+--
+-- ============================================================
+
+BEGIN;
+
+-- ============================================================
+-- ENUMS
+-- ============================================================
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type
+        WHERE typname = 'service_type_enum'
+    ) THEN
+        CREATE TYPE service_type_enum AS ENUM (
+            'hospital',
+            'medical',
+            'food',
+            'water',
+            'toilet',
+            'parking',
+            'fuel',
+            'police',
+            'helpdesk',
+            'atm',
+            'pharmacy',
+            'temple',
+            'bus_stop',
+            'railway_station',
+            'other'
+        );
+    END IF;
+END$$;
+
+-- ============================================================
+-- ROUTES
+-- ============================================================
+
+CREATE TABLE routes (
+
+    id UUID PRIMARY KEY
+        DEFAULT gen_random_uuid(),
+
+    route_name TEXT NOT NULL,
+
+    route_code VARCHAR(50)
+        UNIQUE,
+
+    description TEXT,
+
+    total_distance_km NUMERIC(8,2),
+
+    estimated_time_minutes INTEGER,
+
+    is_active BOOLEAN
+        DEFAULT TRUE,
+
+    created_at TIMESTAMPTZ
+        DEFAULT NOW(),
+
+    updated_at TIMESTAMPTZ
+        DEFAULT NOW()
+
+);
+
+-- ============================================================
+-- ROUTE NODES
+-- ============================================================
+
+CREATE TABLE route_nodes (
+
+    id UUID PRIMARY KEY
+        DEFAULT gen_random_uuid(),
+
+    route_id UUID NOT NULL
+        REFERENCES routes(id)
+        ON DELETE CASCADE,
+
+    node_order INTEGER NOT NULL,
+
+    node_name TEXT NOT NULL,
+
+    latitude DOUBLE PRECISION NOT NULL,
+
+    longitude DOUBLE PRECISION NOT NULL,
+
+    altitude DOUBLE PRECISION,
+
+    distance_from_start_km NUMERIC(8,2),
+
+    created_at TIMESTAMPTZ
+        DEFAULT NOW(),
+
+    CONSTRAINT uq_route_node_order
+        UNIQUE(route_id,node_order)
+
+);
+
+-- ============================================================
+-- SERVICES
+-- ============================================================
+
+CREATE TABLE services (
+
+    id UUID PRIMARY KEY
+        DEFAULT gen_random_uuid(),
+
+    service_name TEXT NOT NULL,
+
+    service_type service_type_enum
+        NOT NULL,
+
+    description TEXT,
+
+    latitude DOUBLE PRECISION NOT NULL,
+
+    longitude DOUBLE PRECISION NOT NULL,
+
+    contact_person TEXT,
+
+    contact_number VARCHAR(20),
+
+    operating_hours TEXT,
+
+    is_24_hours BOOLEAN
+        DEFAULT FALSE,
+
+    is_active BOOLEAN
+        DEFAULT TRUE,
+
+    created_at TIMESTAMPTZ
+        DEFAULT NOW(),
+
+    updated_at TIMESTAMPTZ
+        DEFAULT NOW()
+
+);
+
+-- ============================================================
+-- POLICE BASES
+-- ============================================================
+
+CREATE TABLE police_bases (
+
+    id UUID PRIMARY KEY
+        DEFAULT gen_random_uuid(),
+
+    police_detail_id UUID
+        REFERENCES police_details(id)
+        ON DELETE SET NULL,
+
+    base_name TEXT NOT NULL,
+
+    station_name TEXT,
+
+    sector_name TEXT,
+
+    latitude DOUBLE PRECISION NOT NULL,
+
+    longitude DOUBLE PRECISION NOT NULL,
+
+    contact_number VARCHAR(20),
+
+    incharge_name TEXT,
+
+    total_staff INTEGER
+        DEFAULT 0,
+
+    is_active BOOLEAN
+        DEFAULT TRUE,
+
+    created_at TIMESTAMPTZ
+        DEFAULT NOW(),
+
+    updated_at TIMESTAMPTZ
+        DEFAULT NOW()
+
+);
+
+-- ============================================================
+-- SECTORS
+-- ============================================================
+
+CREATE TABLE sectors (
+
+    id UUID PRIMARY KEY
+        DEFAULT gen_random_uuid(),
+
+    sector_name TEXT NOT NULL,
+
+    sector_code VARCHAR(30)
+        UNIQUE,
+
+    description TEXT,
+
+    police_base_id UUID
+        REFERENCES police_bases(id)
+        ON DELETE SET NULL,
+
+    color_hex VARCHAR(7),
+
+    created_at TIMESTAMPTZ
+        DEFAULT NOW(),
+
+    updated_at TIMESTAMPTZ
+        DEFAULT NOW()
+
+);
+
+-- ============================================================
+-- SECTOR NODES
+-- ============================================================
+
+CREATE TABLE sector_nodes (
+
+    id UUID PRIMARY KEY
+        DEFAULT gen_random_uuid(),
+
+    sector_id UUID NOT NULL
+        REFERENCES sectors(id)
+        ON DELETE CASCADE,
+
+    node_order INTEGER NOT NULL,
+
+    latitude DOUBLE PRECISION NOT NULL,
+
+    longitude DOUBLE PRECISION NOT NULL,
+
+    created_at TIMESTAMPTZ
+        DEFAULT NOW(),
+
+    CONSTRAINT uq_sector_node_order
+        UNIQUE(sector_id,node_order)
+
+);
+
+-- ============================================================
+-- INDEXES
+-- ============================================================
+
+CREATE INDEX idx_routes_name
+ON routes(route_name);
+
+CREATE INDEX idx_routes_active
+ON routes(is_active);
+
+CREATE INDEX idx_route_nodes_route
+ON route_nodes(route_id);
+
+CREATE INDEX idx_route_nodes_order
+ON route_nodes(route_id,node_order);
+
+CREATE INDEX idx_services_type
+ON services(service_type);
+
+CREATE INDEX idx_services_active
+ON services(is_active);
+
+CREATE INDEX idx_police_bases_sector
+ON police_bases(sector_name);
+
+CREATE INDEX idx_police_bases_police
+ON police_bases(police_detail_id);
+
+CREATE INDEX idx_sectors_code
+ON sectors(sector_code);
+
+CREATE INDEX idx_sectors_base
+ON sectors(police_base_id);
+
+CREATE INDEX idx_sector_nodes_sector
+ON sector_nodes(sector_id);
+
+CREATE INDEX idx_sector_nodes_order
+ON sector_nodes(sector_id,node_order);
+
+-- ============================================================
+-- LOCATION INDEXES
+-- ============================================================
+
+CREATE INDEX idx_route_nodes_coordinates
+ON route_nodes(latitude,longitude);
+
+CREATE INDEX idx_services_coordinates
+ON services(latitude,longitude);
+
+CREATE INDEX idx_police_bases_coordinates
+ON police_bases(latitude,longitude);
+
+CREATE INDEX idx_sector_nodes_coordinates
+ON sector_nodes(latitude,longitude);
+
+COMMIT;-- ============================================================
+-- TirthTrack
+-- Phase 1.4 - SQL Migration (Part 3)
+--
+-- Communication Module
+--
+-- Tables
+-- • alerts
+-- • alert_reads
+-- • notifications
+-- • device_tokens
+--
+-- Depends On:
+-- 001_initial_core_schema.sql
+--
+-- ============================================================
+
+BEGIN;
+
+-- ============================================================
+-- ENUMS
+-- ============================================================
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_type WHERE typname='alert_type_enum'
+    ) THEN
+        CREATE TYPE alert_type_enum AS ENUM (
+            'general',
+            'emergency',
+            'weather',
+            'traffic',
+            'security',
+            'medical',
+            'announcement'
+        );
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_type WHERE typname='alert_priority_enum'
+    ) THEN
+        CREATE TYPE alert_priority_enum AS ENUM (
+            'low',
+            'medium',
+            'high',
+            'critical'
+        );
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_type WHERE typname='notification_status_enum'
+    ) THEN
+        CREATE TYPE notification_status_enum AS ENUM (
+            'pending',
+            'sent',
+            'delivered',
+            'failed'
+        );
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_type WHERE typname='device_platform_enum'
+    ) THEN
+        CREATE TYPE device_platform_enum AS ENUM (
+            'android',
+            'ios',
+            'web'
+        );
+    END IF;
+END$$;
+
+-- ============================================================
+-- ALERTS
+-- ============================================================
+
+CREATE TABLE alerts (
+
+    id UUID PRIMARY KEY
+        DEFAULT gen_random_uuid(),
+
+    title TEXT NOT NULL,
+
+    message TEXT NOT NULL,
+
+    alert_type alert_type_enum
+        NOT NULL
+        DEFAULT 'general',
+
+    priority alert_priority_enum
+        NOT NULL
+        DEFAULT 'medium',
+
+    created_by UUID
+        REFERENCES admin_details(id)
+        ON DELETE SET NULL,
+
+    expires_at TIMESTAMPTZ,
+
+    is_active BOOLEAN
+        NOT NULL
+        DEFAULT TRUE,
+
+    created_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW(),
+
+    updated_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW()
+
+);
+
+-- ============================================================
+-- ALERT READS
+-- ============================================================
+
+CREATE TABLE alert_reads (
+
+    id UUID PRIMARY KEY
+        DEFAULT gen_random_uuid(),
+
+    alert_id UUID NOT NULL
+        REFERENCES alerts(id)
+        ON DELETE CASCADE,
+
+    profile_id UUID NOT NULL
+        REFERENCES profiles(id)
+        ON DELETE CASCADE,
+
+    read_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW(),
+
+    CONSTRAINT uq_alert_read
+        UNIQUE(alert_id, profile_id)
+
+);
+
+-- ============================================================
+-- NOTIFICATIONS
+-- ============================================================
+
+CREATE TABLE notifications (
+
+    id UUID PRIMARY KEY
+        DEFAULT gen_random_uuid(),
+
+    profile_id UUID
+        REFERENCES profiles(id)
+        ON DELETE CASCADE,
+
+    alert_id UUID
+        REFERENCES alerts(id)
+        ON DELETE SET NULL,
+
+    title TEXT NOT NULL,
+
+    body TEXT NOT NULL,
+
+    status notification_status_enum
+        NOT NULL
+        DEFAULT 'pending',
+
+    is_read BOOLEAN
+        NOT NULL
+        DEFAULT FALSE,
+
+    sent_at TIMESTAMPTZ,
+
+    read_at TIMESTAMPTZ,
+
+    created_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW()
+
+);
+
+-- ============================================================
+-- DEVICE TOKENS
+-- ============================================================
+
+CREATE TABLE device_tokens (
+
+    id UUID PRIMARY KEY
+        DEFAULT gen_random_uuid(),
+
+    profile_id UUID NOT NULL
+        REFERENCES profiles(id)
+        ON DELETE CASCADE,
+
+    platform device_platform_enum
+        NOT NULL,
+
+    device_name TEXT,
+
+    device_id TEXT,
+
+    fcm_token TEXT NOT NULL,
+
+    app_version TEXT,
+
+    os_version TEXT,
+
+    is_active BOOLEAN
+        NOT NULL
+        DEFAULT TRUE,
+
+    last_seen_at TIMESTAMPTZ
+        DEFAULT NOW(),
+
+    created_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW(),
+
+    updated_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW(),
+
+    CONSTRAINT uq_device_token
+        UNIQUE(fcm_token)
+
+);
+
+-- ============================================================
+-- INDEXES
+-- ============================================================
+
+CREATE INDEX idx_alerts_type
+ON alerts(alert_type);
+
+CREATE INDEX idx_alerts_priority
+ON alerts(priority);
+
+CREATE INDEX idx_alerts_active
+ON alerts(is_active);
+
+CREATE INDEX idx_alerts_created
+ON alerts(created_at DESC);
+
+CREATE INDEX idx_alert_reads_alert
+ON alert_reads(alert_id);
+
+CREATE INDEX idx_alert_reads_profile
+ON alert_reads(profile_id);
+
+CREATE INDEX idx_notifications_profile
+ON notifications(profile_id);
+
+CREATE INDEX idx_notifications_alert
+ON notifications(alert_id);
+
+CREATE INDEX idx_notifications_status
+ON notifications(status);
+
+CREATE INDEX idx_notifications_read
+ON notifications(is_read);
+
+CREATE INDEX idx_notifications_created
+ON notifications(created_at DESC);
+
+CREATE INDEX idx_device_tokens_profile
+ON device_tokens(profile_id);
+
+CREATE INDEX idx_device_tokens_platform
+ON device_tokens(platform);
+
+CREATE INDEX idx_device_tokens_active
+ON device_tokens(is_active);
+
+CREATE INDEX idx_device_tokens_last_seen
+ON device_tokens(last_seen_at DESC);
+
+COMMIT;-- ============================================================
+-- TirthTrack
+-- Phase 1.5 - SQL Migration (Part 4)
+--
+-- Police Module
+--
+-- Tables
+-- • police_login_codes
+-- • scanner_database
+-- • scanner_logs
+--
+-- Depends On:
+-- • 001_initial_core_schema.sql
+--
+-- ============================================================
+
+BEGIN;
+
+-- ============================================================
+-- ENUMS
+-- ============================================================
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type
+        WHERE typname = 'login_code_status_enum'
+    ) THEN
+        CREATE TYPE login_code_status_enum AS ENUM (
+            'active',
+            'used',
+            'expired',
+            'revoked'
+        );
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type
+        WHERE typname = 'scan_result_enum'
+    ) THEN
+        CREATE TYPE scan_result_enum AS ENUM (
+            'success',
+            'not_found',
+            'invalid',
+            'expired'
+        );
+    END IF;
+END$$;
+
+-- ============================================================
+-- POLICE LOGIN CODES
+-- ============================================================
+
+CREATE TABLE police_login_codes (
+
+    id UUID PRIMARY KEY
+        DEFAULT gen_random_uuid(),
+
+    police_id UUID NOT NULL
+        REFERENCES police_details(id)
+        ON DELETE CASCADE,
+
+    login_code VARCHAR(20)
+        NOT NULL
+        UNIQUE,
+
+    expires_at TIMESTAMPTZ
+        NOT NULL,
+
+    status login_code_status_enum
+        NOT NULL
+        DEFAULT 'active',
+
+    used_at TIMESTAMPTZ,
+
+    created_by UUID
+        REFERENCES admin_details(id)
+        ON DELETE SET NULL,
+
+    created_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW(),
+
+    CONSTRAINT chk_login_code_length
+        CHECK (char_length(login_code) >= 6)
+
+);
+
+-- ============================================================
+-- SCANNER DATABASE
+-- ============================================================
+
+CREATE TABLE scanner_database (
+
+    id UUID PRIMARY KEY
+        DEFAULT gen_random_uuid(),
+
+    profile_id UUID
+        REFERENCES profiles(id)
+        ON DELETE SET NULL,
+
+    qr_code TEXT
+        NOT NULL
+        UNIQUE,
+
+    full_name TEXT
+        NOT NULL,
+
+    mobile VARCHAR(15),
+
+    emergency_contact VARCHAR(15),
+
+    blood_group VARCHAR(5),
+
+    address TEXT,
+
+    medical_notes TEXT,
+
+    is_active BOOLEAN
+        NOT NULL
+        DEFAULT TRUE,
+
+    created_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW(),
+
+    updated_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW()
+
+);
+
+-- ============================================================
+-- SCANNER LOGS
+-- ============================================================
+
+CREATE TABLE scanner_logs (
+
+    id UUID PRIMARY KEY
+        DEFAULT gen_random_uuid(),
+
+    scanner_record_id UUID
+        NOT NULL
+        REFERENCES scanner_database(id)
+        ON DELETE CASCADE,
+
+    police_id UUID
+        NOT NULL
+        REFERENCES police_details(id)
+        ON DELETE CASCADE,
+
+    scan_result scan_result_enum
+        NOT NULL,
+
+    latitude DOUBLE PRECISION,
+
+    longitude DOUBLE PRECISION,
+
+    device_id TEXT,
+
+    notes TEXT,
+
+    scanned_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW()
+
+);
+
+-- ============================================================
+-- INDEXES
+-- ============================================================
+
+CREATE INDEX idx_police_login_codes_police
+ON police_login_codes(police_id);
+
+CREATE INDEX idx_police_login_codes_status
+ON police_login_codes(status);
+
+CREATE INDEX idx_police_login_codes_expires
+ON police_login_codes(expires_at);
+
+CREATE INDEX idx_scanner_database_qr
+ON scanner_database(qr_code);
+
+CREATE INDEX idx_scanner_database_profile
+ON scanner_database(profile_id);
+
+CREATE INDEX idx_scanner_database_mobile
+ON scanner_database(mobile);
+
+CREATE INDEX idx_scanner_database_active
+ON scanner_database(is_active);
+
+CREATE INDEX idx_scanner_logs_scanner_record
+ON scanner_logs(scanner_record_id);
+
+CREATE INDEX idx_scanner_logs_police
+ON scanner_logs(police_id);
+
+CREATE INDEX idx_scanner_logs_result
+ON scanner_logs(scan_result);
+
+CREATE INDEX idx_scanner_logs_scanned_at
+ON scanner_logs(scanned_at DESC);
+
+CREATE INDEX idx_scanner_logs_coordinates
+ON scanner_logs(latitude, longitude);
+
+COMMIT;-- ============================================================
+-- TirthTrack
+-- Phase 1.5 - SQL Migration (Part 4)
+--
+-- Police Module
+--
+-- Tables
+-- • police_login_codes
+-- • scanner_database
+-- • scanner_logs
+--
+-- Depends On:
+-- • 001_initial_core_schema.sql
+--
+-- ============================================================
+
+BEGIN;
+
+-- ============================================================
+-- ENUMS
+-- ============================================================
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type
+        WHERE typname = 'login_code_status_enum'
+    ) THEN
+        CREATE TYPE login_code_status_enum AS ENUM (
+            'active',
+            'used',
+            'expired',
+            'revoked'
+        );
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type
+        WHERE typname = 'scan_result_enum'
+    ) THEN
+        CREATE TYPE scan_result_enum AS ENUM (
+            'success',
+            'not_found',
+            'invalid',
+            'expired'
+        );
+    END IF;
+END$$;
+
+-- ============================================================
+-- POLICE LOGIN CODES
+-- ============================================================
+
+CREATE TABLE police_login_codes (
+
+    id UUID PRIMARY KEY
+        DEFAULT gen_random_uuid(),
+
+    police_id UUID NOT NULL
+        REFERENCES police_details(id)
+        ON DELETE CASCADE,
+
+    login_code VARCHAR(20)
+        NOT NULL
+        UNIQUE,
+
+    expires_at TIMESTAMPTZ
+        NOT NULL,
+
+    status login_code_status_enum
+        NOT NULL
+        DEFAULT 'active',
+
+    used_at TIMESTAMPTZ,
+
+    created_by UUID
+        REFERENCES admin_details(id)
+        ON DELETE SET NULL,
+
+    created_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW(),
+
+    CONSTRAINT chk_login_code_length
+        CHECK (char_length(login_code) >= 6)
+
+);
+
+-- ============================================================
+-- SCANNER DATABASE
+-- ============================================================
+
+CREATE TABLE scanner_database (
+
+    id UUID PRIMARY KEY
+        DEFAULT gen_random_uuid(),
+
+    profile_id UUID
+        REFERENCES profiles(id)
+        ON DELETE SET NULL,
+
+    qr_code TEXT
+        NOT NULL
+        UNIQUE,
+
+    full_name TEXT
+        NOT NULL,
+
+    mobile VARCHAR(15),
+
+    emergency_contact VARCHAR(15),
+
+    blood_group VARCHAR(5),
+
+    address TEXT,
+
+    medical_notes TEXT,
+
+    is_active BOOLEAN
+        NOT NULL
+        DEFAULT TRUE,
+
+    created_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW(),
+
+    updated_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW()
+
+);
+
+-- ============================================================
+-- SCANNER LOGS
+-- ============================================================
+
+CREATE TABLE scanner_logs (
+
+    id UUID PRIMARY KEY
+        DEFAULT gen_random_uuid(),
+
+    scanner_record_id UUID
+        NOT NULL
+        REFERENCES scanner_database(id)
+        ON DELETE CASCADE,
+
+    police_id UUID
+        NOT NULL
+        REFERENCES police_details(id)
+        ON DELETE CASCADE,
+
+    scan_result scan_result_enum
+        NOT NULL,
+
+    latitude DOUBLE PRECISION,
+
+    longitude DOUBLE PRECISION,
+
+    device_id TEXT,
+
+    notes TEXT,
+
+    scanned_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW()
+
+);
+
+-- ============================================================
+-- INDEXES
+-- ============================================================
+
+CREATE INDEX idx_police_login_codes_police
+ON police_login_codes(police_id);
+
+CREATE INDEX idx_police_login_codes_status
+ON police_login_codes(status);
+
+CREATE INDEX idx_police_login_codes_expires
+ON police_login_codes(expires_at);
+
+CREATE INDEX idx_scanner_database_qr
+ON scanner_database(qr_code);
+
+CREATE INDEX idx_scanner_database_profile
+ON scanner_database(profile_id);
+
+CREATE INDEX idx_scanner_database_mobile
+ON scanner_database(mobile);
+
+CREATE INDEX idx_scanner_database_active
+ON scanner_database(is_active);
+
+CREATE INDEX idx_scanner_logs_scanner_record
+ON scanner_logs(scanner_record_id);
+
+CREATE INDEX idx_scanner_logs_police
+ON scanner_logs(police_id);
+
+CREATE INDEX idx_scanner_logs_result
+ON scanner_logs(scan_result);
+
+CREATE INDEX idx_scanner_logs_scanned_at
+ON scanner_logs(scanned_at DESC);
+
+CREATE INDEX idx_scanner_logs_coordinates
+ON scanner_logs(latitude, longitude);
+
+COMMIT;-- ============================================================
+-- TirthTrack
+-- Phase 1.6 - SQL Migration (Part 5)
+--
+-- Chatbot Module
+--
+-- Tables
+-- • chatbot_sessions
+-- • chatbot_messages
+-- • app_settings
+--
+-- Depends On:
+-- • 001_initial_core_schema.sql
+--
+-- ============================================================
+
+BEGIN;
+
+-- ============================================================
+-- ENUMS
+-- ============================================================
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type
+        WHERE typname = 'chat_message_role_enum'
+    ) THEN
+        CREATE TYPE chat_message_role_enum AS ENUM (
+            'system',
+            'user',
+            'assistant'
+        );
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type
+        WHERE typname = 'chat_session_status_enum'
+    ) THEN
+        CREATE TYPE chat_session_status_enum AS ENUM (
+            'active',
+            'closed',
+            'archived'
+        );
+    END IF;
+END$$;
+
+-- ============================================================
+-- CHATBOT SESSIONS
+-- ============================================================
+
+CREATE TABLE chatbot_sessions (
+
+    id UUID PRIMARY KEY
+        DEFAULT gen_random_uuid(),
+
+    profile_id UUID
+        NOT NULL
+        REFERENCES profiles(id)
+        ON DELETE CASCADE,
+
+    session_title TEXT,
+
+    status chat_session_status_enum
+        NOT NULL
+        DEFAULT 'active',
+
+    started_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW(),
+
+    ended_at TIMESTAMPTZ,
+
+    created_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW(),
+
+    updated_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW()
+
+);
+
+-- ============================================================
+-- CHATBOT MESSAGES
+-- ============================================================
+
+CREATE TABLE chatbot_messages (
+
+    id UUID PRIMARY KEY
+        DEFAULT gen_random_uuid(),
+
+    session_id UUID
+        NOT NULL
+        REFERENCES chatbot_sessions(id)
+        ON DELETE CASCADE,
+
+    sender chat_message_role_enum
+        NOT NULL,
+
+    message TEXT
+        NOT NULL,
+
+    metadata JSONB
+        DEFAULT '{}'::jsonb,
+
+    created_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW()
+
+);
+
+-- ============================================================
+-- APP SETTINGS
+-- ============================================================
+
+CREATE TABLE app_settings (
+
+    id UUID PRIMARY KEY
+        DEFAULT gen_random_uuid(),
+
+    setting_key VARCHAR(150)
+        NOT NULL
+        UNIQUE,
+
+    setting_value JSONB
+        NOT NULL,
+
+    description TEXT,
+
+    is_public BOOLEAN
+        NOT NULL
+        DEFAULT FALSE,
+
+    created_by UUID
+        REFERENCES admin_details(id)
+        ON DELETE SET NULL,
+
+    created_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW(),
+
+    updated_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW()
+
+);
+
+-- ============================================================
+-- INDEXES
+-- ============================================================
+
+CREATE INDEX idx_chatbot_sessions_profile
+ON chatbot_sessions(profile_id);
+
+CREATE INDEX idx_chatbot_sessions_status
+ON chatbot_sessions(status);
+
+CREATE INDEX idx_chatbot_sessions_started
+ON chatbot_sessions(started_at DESC);
+
+CREATE INDEX idx_chatbot_messages_session
+ON chatbot_messages(session_id);
+
+CREATE INDEX idx_chatbot_messages_sender
+ON chatbot_messages(sender);
+
+CREATE INDEX idx_chatbot_messages_created
+ON chatbot_messages(created_at);
+
+CREATE INDEX idx_app_settings_public
+ON app_settings(is_public);
+
+CREATE INDEX idx_app_settings_key
+ON app_settings(setting_key);
+
+COMMIT;-- ============================================================
+-- TirthTrack
+-- 007_enable_rls.sql
+--
+-- Enables Row Level Security
+-- Creates helper functions
+-- Grants database privileges
+--
+-- Execute AFTER all schema migrations.
+-- ============================================================
+
+BEGIN;
+
+-- ============================================================
+-- HELPER FUNCTIONS
+-- ============================================================
+
+-- Current user's application role
+CREATE OR REPLACE FUNCTION public.current_user_role()
+RETURNS user_role_enum
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+    SELECT role
+    FROM profiles
+    WHERE id = auth.uid();
+$$;
+
+-- Is current user Admin?
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+    SELECT EXISTS (
+        SELECT 1
+        FROM admin_details ad
+        JOIN profiles p
+            ON p.id = ad.profile_id
+        WHERE p.id = auth.uid()
+    );
+$$;
+
+-- Is current user Police?
+CREATE OR REPLACE FUNCTION public.is_police()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+    SELECT EXISTS (
+        SELECT 1
+        FROM police_details pd
+        JOIN profiles p
+            ON p.id = pd.profile_id
+        WHERE p.id = auth.uid()
+          AND pd.verification_status = 'verified'
+    );
+$$;
+
+-- ============================================================
+-- ENABLE RLS
+-- ============================================================
+
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE police_details ENABLE ROW LEVEL SECURITY;
+ALTER TABLE admin_details ENABLE ROW LEVEL SECURITY;
+ALTER TABLE live_locations ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE routes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE route_nodes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE services ENABLE ROW LEVEL SECURITY;
+ALTER TABLE police_bases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sectors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sector_nodes ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE alerts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE alert_reads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE device_tokens ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE police_login_codes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE scanner_database ENABLE ROW LEVEL SECURITY;
+ALTER TABLE scanner_logs ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE chatbot_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chatbot_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
+
+-- ============================================================
+-- PROFILES
+-- ============================================================
+
+CREATE POLICY profiles_select
+ON profiles
+FOR SELECT
+USING (
+    auth.uid() = id
+    OR is_admin()
+);
+
+CREATE POLICY profiles_insert
+ON profiles
+FOR INSERT
+WITH CHECK (
+    auth.uid() = id
+);
+
+CREATE POLICY profiles_update
+ON profiles
+FOR UPDATE
+USING (
+    auth.uid() = id
+    OR is_admin()
+);
+
+-- ============================================================
+-- POLICE DETAILS
+-- ============================================================
+
+CREATE POLICY police_details_select
+ON police_details
+FOR SELECT
+USING (
+    profile_id = auth.uid()
+    OR is_admin()
+);
+
+CREATE POLICY police_details_insert
+ON police_details
+FOR INSERT
+WITH CHECK (
+    profile_id = auth.uid()
+);
+
+CREATE POLICY police_details_update
+ON police_details
+FOR UPDATE
+USING (
+    profile_id = auth.uid()
+    OR is_admin()
+);
+
+-- ============================================================
+-- ADMIN DETAILS
+-- ============================================================
+
+CREATE POLICY admin_details_all
+ON admin_details
+FOR ALL
+USING (is_admin())
+WITH CHECK (is_admin());
+
+-- ============================================================
+-- LIVE LOCATIONS
+-- ============================================================
+
+CREATE POLICY live_locations_select
+ON live_locations
+FOR SELECT
+USING (
+    profile_id = auth.uid()
+    OR is_police()
+    OR is_admin()
+);
+
+CREATE POLICY live_locations_insert
+ON live_locations
+FOR INSERT
+WITH CHECK (
+    profile_id = auth.uid()
+);
+
+CREATE POLICY live_locations_update
+ON live_locations
+FOR UPDATE
+USING (
+    profile_id = auth.uid()
+);
+
+-- ============================================================
+-- MAP TABLES (PUBLIC READ)
+-- ============================================================
+
+CREATE POLICY routes_public_read
+ON routes
+FOR SELECT
+USING (TRUE);
+
+CREATE POLICY routes_admin_write
+ON routes
+FOR ALL
+USING (is_admin())
+WITH CHECK (is_admin());
+
+CREATE POLICY route_nodes_public_read
+ON route_nodes
+FOR SELECT
+USING (TRUE);
+
+CREATE POLICY route_nodes_admin_write
+ON route_nodes
+FOR ALL
+USING (is_admin())
+WITH CHECK (is_admin());
+
+CREATE POLICY services_public_read
+ON services
+FOR SELECT
+USING (TRUE);
+
+CREATE POLICY services_admin_write
+ON services
+FOR ALL
+USING (is_admin())
+WITH CHECK (is_admin());
+
+CREATE POLICY police_bases_public_read
+ON police_bases
+FOR SELECT
+USING (TRUE);
+
+CREATE POLICY police_bases_admin_write
+ON police_bases
+FOR ALL
+USING (is_admin())
+WITH CHECK (is_admin());
+
+CREATE POLICY sectors_public_read
+ON sectors
+FOR SELECT
+USING (TRUE);
+
+CREATE POLICY sectors_admin_write
+ON sectors
+FOR ALL
+USING (is_admin())
+WITH CHECK (is_admin());
+
+CREATE POLICY sector_nodes_public_read
+ON sector_nodes
+FOR SELECT
+USING (TRUE);
+
+CREATE POLICY sector_nodes_admin_write
+ON sector_nodes
+FOR ALL
+USING (is_admin())
+WITH CHECK (is_admin());
+
+-- ============================================================
+-- ALERTS
+-- ============================================================
+
+CREATE POLICY alerts_read
+ON alerts
+FOR SELECT
+USING (TRUE);
+
+CREATE POLICY alerts_admin_write
+ON alerts
+FOR ALL
+USING (is_admin())
+WITH CHECK (is_admin());
+
+CREATE POLICY alert_reads_owner
+ON alert_reads
+FOR ALL
+USING (
+    profile_id = auth.uid()
+);
+
+CREATE POLICY notifications_owner
+ON notifications
+FOR ALL
+USING (
+    profile_id = auth.uid()
+    OR is_admin()
+);
+
+CREATE POLICY device_tokens_owner
+ON device_tokens
+FOR ALL
+USING (
+    profile_id = auth.uid()
+);
+
+-- ============================================================
+-- POLICE
+-- ============================================================
+
+CREATE POLICY police_login_codes_policy
+ON police_login_codes
+FOR ALL
+USING (
+    is_admin()
+    OR police_id IN (
+        SELECT id
+        FROM police_details
+        WHERE profile_id = auth.uid()
+    )
+);
+
+CREATE POLICY scanner_database_policy
+ON scanner_database
+FOR SELECT
+USING (
+    is_police()
+    OR is_admin()
+);
+
+CREATE POLICY scanner_logs_policy
+ON scanner_logs
+FOR ALL
+USING (
+    is_police()
+    OR is_admin()
+);
+
+-- ============================================================
+-- CHATBOT
+-- ============================================================
+
+CREATE POLICY chatbot_sessions_owner
+ON chatbot_sessions
+FOR ALL
+USING (
+    profile_id = auth.uid()
+);
+
+CREATE POLICY chatbot_messages_owner
+ON chatbot_messages
+FOR ALL
+USING (
+    session_id IN (
+        SELECT id
+        FROM chatbot_sessions
+        WHERE profile_id = auth.uid()
+    )
+);
+
+CREATE POLICY app_settings_read
+ON app_settings
+FOR SELECT
+USING (
+    is_public
+);
+
+CREATE POLICY app_settings_admin
+ON app_settings
+FOR ALL
+USING (
+    is_admin()
+)
+WITH CHECK (
+    is_admin()
+);
+
+-- ============================================================
+-- DATABASE GRANTS
+-- ============================================================
+
+GRANT USAGE ON SCHEMA public
+TO anon, authenticated;
+
+GRANT SELECT
+ON routes,
+route_nodes,
+services,
+police_bases,
+sectors,
+sector_nodes,
+alerts,
+app_settings
+TO anon;
+
+GRANT ALL
+ON ALL TABLES IN SCHEMA public
+TO authenticated;
+
+GRANT ALL
+ON ALL SEQUENCES IN SCHEMA public
+TO authenticated;
+
+COMMIT;-- ============================================================
+-- TirthTrack
+-- 008_storage.sql
+--
+-- Storage Buckets + Storage Policies
+--
+-- Execute AFTER:
+-- 007_enable_rls.sql
+--
+-- ============================================================
+
+BEGIN;
+
+-- ============================================================
+-- STORAGE BUCKETS
+-- ============================================================
+
+INSERT INTO storage.buckets
+(id, name, public, file_size_limit, allowed_mime_types)
+VALUES
+('profile-photos','profile-photos',false,5242880,
+ARRAY['image/jpeg','image/png','image/webp'])
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO storage.buckets
+(id, name, public, file_size_limit, allowed_mime_types)
+VALUES
+('police-id-cards','police-id-cards',false,10485760,
+ARRAY[
+'image/jpeg',
+'image/png',
+'image/webp',
+'application/pdf'
+])
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO storage.buckets
+(id,name,public,file_size_limit)
+VALUES
+('chatbot-media','chatbot-media',false,15728640)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO storage.buckets
+(id,name,public,file_size_limit,allowed_mime_types)
+VALUES
+('route-assets','route-assets',true,10485760,
+ARRAY[
+'image/jpeg',
+'image/png',
+'image/webp',
+'image/svg+xml'
+])
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO storage.buckets
+(id,name,public,file_size_limit,allowed_mime_types)
+VALUES
+('service-images','service-images',true,10485760,
+ARRAY[
+'image/jpeg',
+'image/png',
+'image/webp'
+])
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO storage.buckets
+(id,name,public,file_size_limit)
+VALUES
+('app-assets','app-assets',true,20971520)
+ON CONFLICT (id) DO NOTHING;
+
+-- ============================================================
+-- REMOVE OLD POLICIES (SAFE TO RE-RUN)
+-- ============================================================
+
+DROP POLICY IF EXISTS "Public Read Route Assets" ON storage.objects;
+DROP POLICY IF EXISTS "Public Read Service Images" ON storage.objects;
+DROP POLICY IF EXISTS "Public Read App Assets" ON storage.objects;
+
+DROP POLICY IF EXISTS "Users Read Own Profile Photos" ON storage.objects;
+DROP POLICY IF EXISTS "Users Upload Own Profile Photos" ON storage.objects;
+DROP POLICY IF EXISTS "Users Update Own Profile Photos" ON storage.objects;
+DROP POLICY IF EXISTS "Users Delete Own Profile Photos" ON storage.objects;
+
+DROP POLICY IF EXISTS "Police Upload Own ID" ON storage.objects;
+DROP POLICY IF EXISTS "Police Read Own ID" ON storage.objects;
+DROP POLICY IF EXISTS "Police Update Own ID" ON storage.objects;
+DROP POLICY IF EXISTS "Police Delete Own ID" ON storage.objects;
+
+DROP POLICY IF EXISTS "Users Read Own Chat Media" ON storage.objects;
+DROP POLICY IF EXISTS "Users Upload Own Chat Media" ON storage.objects;
+DROP POLICY IF EXISTS "Users Update Own Chat Media" ON storage.objects;
+DROP POLICY IF EXISTS "Users Delete Own Chat Media" ON storage.objects;
+
+DROP POLICY IF EXISTS "Admins Manage Route Assets" ON storage.objects;
+DROP POLICY IF EXISTS "Admins Manage Service Images" ON storage.objects;
+DROP POLICY IF EXISTS "Admins Manage App Assets" ON storage.objects;
+
+-- ============================================================
+-- PUBLIC BUCKETS
+-- ============================================================
+
+CREATE POLICY "Public Read Route Assets"
+ON storage.objects
+FOR SELECT
+USING (bucket_id='route-assets');
+
+CREATE POLICY "Public Read Service Images"
+ON storage.objects
+FOR SELECT
+USING (bucket_id='service-images');
+
+CREATE POLICY "Public Read App Assets"
+ON storage.objects
+FOR SELECT
+USING (bucket_id='app-assets');
+
+-- ============================================================
+-- PROFILE PHOTOS
+-- ============================================================
+
+CREATE POLICY "Users Read Own Profile Photos"
+ON storage.objects
+FOR SELECT
+USING (
+bucket_id='profile-photos'
+AND auth.uid()::text=(storage.foldername(name))[1]
+);
+
+CREATE POLICY "Users Upload Own Profile Photos"
+ON storage.objects
+FOR INSERT
+WITH CHECK (
+bucket_id='profile-photos'
+AND auth.uid()::text=(storage.foldername(name))[1]
+);
+
+CREATE POLICY "Users Update Own Profile Photos"
+ON storage.objects
+FOR UPDATE
+USING (
+bucket_id='profile-photos'
+AND auth.uid()::text=(storage.foldername(name))[1]
+);
+
+CREATE POLICY "Users Delete Own Profile Photos"
+ON storage.objects
+FOR DELETE
+USING (
+bucket_id='profile-photos'
+AND auth.uid()::text=(storage.foldername(name))[1]
+);
+
+-- ============================================================
+-- POLICE ID CARDS
+-- ============================================================
+
+CREATE POLICY "Police Upload Own ID"
+ON storage.objects
+FOR INSERT
+WITH CHECK (
+bucket_id='police-id-cards'
+AND auth.uid()::text=(storage.foldername(name))[1]
+);
+
+CREATE POLICY "Police Read Own ID"
+ON storage.objects
+FOR SELECT
+USING (
+bucket_id='police-id-cards'
+AND (
+auth.uid()::text=(storage.foldername(name))[1]
+OR public.is_admin()
+)
+);
+
+CREATE POLICY "Police Update Own ID"
+ON storage.objects
+FOR UPDATE
+USING (
+bucket_id='police-id-cards'
+AND (
+auth.uid()::text=(storage.foldername(name))[1]
+OR public.is_admin()
+)
+);
+
+CREATE POLICY "Police Delete Own ID"
+ON storage.objects
+FOR DELETE
+USING (
+bucket_id='police-id-cards'
+AND (
+auth.uid()::text=(storage.foldername(name))[1]
+OR public.is_admin()
+)
+);
+
+-- ============================================================
+-- CHATBOT MEDIA
+-- ============================================================
+
+CREATE POLICY "Users Read Own Chat Media"
+ON storage.objects
+FOR SELECT
+USING (
+bucket_id='chatbot-media'
+AND auth.uid()::text=(storage.foldername(name))[1]
+);
+
+CREATE POLICY "Users Upload Own Chat Media"
+ON storage.objects
+FOR INSERT
+WITH CHECK (
+bucket_id='chatbot-media'
+AND auth.uid()::text=(storage.foldername(name))[1]
+);
+
+CREATE POLICY "Users Update Own Chat Media"
+ON storage.objects
+FOR UPDATE
+USING (
+bucket_id='chatbot-media'
+AND auth.uid()::text=(storage.foldername(name))[1]
+);
+
+CREATE POLICY "Users Delete Own Chat Media"
+ON storage.objects
+FOR DELETE
+USING (
+bucket_id='chatbot-media'
+AND auth.uid()::text=(storage.foldername(name))[1]
+);
+
+-- ============================================================
+-- ADMIN WRITE ACCESS
+-- ============================================================
+
+CREATE POLICY "Admins Manage Route Assets"
+ON storage.objects
+FOR ALL
+USING (
+bucket_id='route-assets'
+AND public.is_admin()
+)
+WITH CHECK (
+bucket_id='route-assets'
+AND public.is_admin()
+);
+
+CREATE POLICY "Admins Manage Service Images"
+ON storage.objects
+FOR ALL
+USING (
+bucket_id='service-images'
+AND public.is_admin()
+)
+WITH CHECK (
+bucket_id='service-images'
+AND public.is_admin()
+);
+
+CREATE POLICY "Admins Manage App Assets"
+ON storage.objects
+FOR ALL
+USING (
+bucket_id='app-assets'
+AND public.is_admin()
+)
+WITH CHECK (
+bucket_id='app-assets'
+AND public.is_admin()
+);
+
+COMMIT;,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,-- ============================================================
+-- TirthTrack
+-- 009_auth_profile_trigger.sql
+--
+-- Automatically creates a profile after Phone OTP signup.
+--
+-- Execute AFTER:
+-- 008_storage.sql
+--
+-- ============================================================
+
+BEGIN;
+
+-- ============================================================
+-- FUNCTION
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+
+    INSERT INTO public.profiles (
+        id,
+        mobile,
+        role,
+        is_active,
+        created_at,
+        updated_at
+    )
+    VALUES (
+        NEW.id,
+        NEW.phone,
+        'user',
+        TRUE,
+        NOW(),
+        NOW()
+    )
+    ON CONFLICT (id) DO NOTHING;
+
+    RETURN NEW;
+
+END;
+$$;
+
+-- ============================================================
+-- REMOVE OLD TRIGGER
+-- ============================================================
+
+DROP TRIGGER IF EXISTS on_auth_user_created
+ON auth.users;
+
+-- ============================================================
+-- CREATE TRIGGER
+-- ============================================================
+
+CREATE TRIGGER on_auth_user_created
+AFTER INSERT
+ON auth.users
+FOR EACH ROW
+EXECUTE FUNCTION public.handle_new_user();
+
+COMMIT;,,,,,,,,,,,,,,-- ALTER TABLE profiles
+-- ALTER COLUMN full_name DROP NOT NULL;
+-- CREATE OR REPLACE FUNCTION public.handle_new_user()
+-- RETURNS trigger
+-- LANGUAGE plpgsql
+-- SECURITY DEFINER
+-- SET search_path = public
+-- AS $$
+-- BEGIN
+--     INSERT INTO public.profiles (
+--         id,
+--         mobile,
+--         email,
+--         role,
+--         is_active
+--     )
+--     VALUES (
+--         NEW.id,
+--         NEW.phone,
+--         NEW.email,
+--         'user',
+--         TRUE
+--     )
+--     ON CONFLICT (id) DO NOTHING;
+
+--     RETURN NEW;
+-- END;
+-- $$;
+-- 
+-- SELECT
+--     id,
+--     phone,
+--     email
+-- FROM auth.users
+-- ORDER BY created_at DESC
+-- LIMIT 1;
+-- INSERT INTO public.profiles (
+--     id,
+--     full_name,
+--     mobile,
+--     email,
+--     role,
+--     is_active
+-- )
+-- VALUES (
+--     '9152e0d0-7c4c-478d-a72f-e92f9f44a65e',
+--     'Test User',
+--     '+911234567890',
+--     'test@example.com',
+--     'user',
+--     true
+-- );
+-- SELECT
+--     trigger_name,
+--     event_manipulation,
+--     action_timing,
+--     action_statement
+-- FROM information_schema.triggers
+-- WHERE event_object_schema = 'auth'
+--   AND event_object_table = 'users';
+-- SELECT
+--     p.proname,
+--     pg_get_userbyid(p.proowner) AS owner
+-- FROM pg_proc p
+-- WHERE p.proname = 'handle_new_user';
+SELECT
+    id,
+    full_name,
+    mobile,
+    email,
+    role,
+    created_at
+FROM public.profiles
+WHERE id = '9152e0d0-7c4c-478d-a72f-e92f9f44a65e';

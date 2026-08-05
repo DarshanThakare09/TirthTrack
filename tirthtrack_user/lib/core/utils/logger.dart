@@ -1,0 +1,17 @@
+// ============================================================
+// core/utils/logger.dart
+// ============================================================
+
+import 'package:logger/logger.dart';
+
+final appLogger = Logger(
+  printer: PrettyPrinter(
+    methodCount: 1,
+    errorMethodCount: 5,
+    lineLength: 80,
+    colors: true,
+    printEmojis: true,
+    dateTimeFormat: DateTimeFormat.onlyTimeAndSinceStart,
+  ),
+  level: Level.debug,
+);

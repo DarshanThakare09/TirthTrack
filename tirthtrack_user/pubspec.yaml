@@ -1,45 +1,90 @@
 name: tirthtrack_user
-description: "tirthtrack - user."
+description: "TirthTrack - Pilgrim App for Nashik Kumbh Mela."
 publish_to: 'none'
-version: 0.1.0+1
+version: 1.0.0+1
 
 environment:
-  sdk: ^3.11.0
+  sdk: ^3.5.0
 
 dependencies:
   flutter:
     sdk: flutter
-  flutter_launcher_icons: ^0.14.4
+
+  # Supabase
+  supabase_flutter: ^2.8.4
+
+  # State Management
+  flutter_riverpod: ^2.6.1
+
+  # Navigation
+  go_router: ^14.8.1
+
+  # Maps
+  google_maps_flutter: ^2.10.0
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+
+  # Location
+  geolocator: ^13.0.2
+  permission_handler: ^11.3.1
+
+  # Networking
+  connectivity_plus: ^6.1.4
+  http: ^1.2.2
+
+  # UI
+  cached_network_image: ^3.4.1
+  image_picker: ^1.1.2
+  shimmer: ^3.0.0
+  google_fonts: ^6.2.1
+  flutter_svg: ^2.0.17
+
+  # Utilities
+  intl: ^0.19.0
+  logger: ^2.5.0
+  shared_preferences: ^2.3.3
+  battery_plus: ^6.0.3
+  device_info_plus: ^11.1.5
+  package_info_plus: ^8.1.3
+  url_launcher: ^6.3.1
+  uuid: ^4.5.1
+
+  # Env
+  flutter_dotenv: ^5.2.1
+
+  # Splash & Icons
   flutter_native_splash: ^2.4.7
+  flutter_launcher_icons: ^0.14.4
+
+  # Serialization
+  freezed_annotation: ^2.4.4
+  json_annotation: ^4.9.0
+
+  # Equatable
+  equatable: ^2.0.7
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^6.0.0
-  flutter_launcher_icons: ^0.14.4
+  flutter_lints: ^5.0.0
+  build_runner: ^2.4.13
+  freezed: ^2.5.7
+  json_serializable: ^6.9.0
 
 flutter_launcher_icons:
   image_path: "assets/icons/app_icon.png"
   android: true
   ios: true
-  launcher_icon: "assets/icons/app_icon.png"
-  launcher_icon_foreground: "#ffffff"
-
-
 
 flutter_native_splash:
-  color: "#FFFDFD"
+  color: "#0D0D0D"
   image: "assets/icons/app_icon.png"
-
   android_12:
-    color: "#FFFDFD"
+    color: "#0D0D0D"
     image: "assets/icons/app_icon.png"
-
 
 flutter:
   uses-material-design: true
-
-
-
   assets:
-  -  assets/icons/
+    - assets/icons/
+    - .env

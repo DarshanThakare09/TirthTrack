@@ -198,41 +198,75 @@ class _PoliceBaseTabState extends ConsumerState<PoliceBaseTab>
             },
           ),
 
-          // ── 3. Floating Map Controls Column (Zoom In, Zoom Out, Recenter) ─
+          // ── Floating Vertical Map Controls ─────────────
           Positioned(
             right: 16,
             bottom: 24,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                FloatingActionButton.small(
-                  heroTag: 'police_zoom_in_fab',
-                  backgroundColor: AppColors.surface,
-                  foregroundColor: AppColors.onSurface,
-                  onPressed: () {
-                    _mapController?.animateCamera(CameraUpdate.zoomIn());
-                  },
-                  child: const Icon(Icons.add_rounded),
-                ),
-                const SizedBox(height: 8),
-                FloatingActionButton.small(
-                  heroTag: 'police_zoom_out_fab',
-                  backgroundColor: AppColors.surface,
-                  foregroundColor: AppColors.onSurface,
-                  onPressed: () {
-                    _mapController?.animateCamera(CameraUpdate.zoomOut());
-                  },
-                  child: const Icon(Icons.remove_rounded),
-                ),
-                const SizedBox(height: 8),
-                FloatingActionButton.small(
-                  heroTag: 'police_recenter_fab',
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                  onPressed: () => _recenterToUser(position),
-                  child: const Icon(Icons.my_location_rounded),
-                ),
-              ],
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: AppColors.border, width: 1),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 20,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: () {
+                        _mapController?.animateCamera(CameraUpdate.zoomIn());
+                      },
+                      child: const Padding(
+                        padding: EdgeInsets.all(10),
+                        child: Icon(Icons.add_rounded, size: 22, color: AppColors.onSurface),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(
+                    width: 24,
+                    child: Divider(height: 1, color: AppColors.divider),
+                  ),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: () {
+                        _mapController?.animateCamera(CameraUpdate.zoomOut());
+                      },
+                      child: const Padding(
+                        padding: EdgeInsets.all(10),
+                        child: Icon(Icons.remove_rounded, size: 22, color: AppColors.onSurface),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(
+                    width: 24,
+                    child: Divider(height: 1, color: AppColors.divider),
+                  ),
+                  Material(
+                    color: AppColors.primaryContainer,
+                    borderRadius: BorderRadius.circular(20),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: () => _recenterToUser(position),
+                      child: const Padding(
+                        padding: EdgeInsets.all(10),
+                        child: Icon(Icons.my_location_rounded, size: 22, color: AppColors.primary),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],

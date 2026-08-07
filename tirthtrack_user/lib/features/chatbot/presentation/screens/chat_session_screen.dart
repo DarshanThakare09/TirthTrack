@@ -346,8 +346,8 @@ class _AssistantAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 32,
-      height: 32,
+      width:32,
+      height:32,
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [AppColors.primaryLight, AppColors.primary],

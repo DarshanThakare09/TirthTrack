@@ -12,6 +12,7 @@ import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../router/app_router.dart';
+import '../../../../shared/widgets/app_button.dart';
 import '../../../../shared/widgets/error_widget.dart';
 import '../../../../shared/widgets/loading_widget.dart';
 import '../../../authentication/providers/auth_provider.dart';
@@ -29,12 +30,18 @@ class ProfileScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Profile'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.edit_outlined),
-            onPressed: () => context.push(AppRoutes.editProfile),
-            tooltip: 'Edit Profile',
+          Container(
+            margin: const EdgeInsets.only(right: 12),
+            decoration: BoxDecoration(
+              color: AppColors.primaryContainer,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.edit_outlined, color: AppColors.primary, size: 20),
+              onPressed: () => context.push(AppRoutes.editProfile),
+              tooltip: 'Edit Profile',
+            ),
           ),
         ],
       ),
@@ -45,169 +52,208 @@ class ProfileScreen extends ConsumerWidget {
           onRetry: () => ref.refresh(profileProvider),
         ),
         data: (profile) => ListView(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           children: [
-            // ── Header Card ─────────────────────────────────
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-                side: const BorderSide(color: AppColors.border, width: 1),
-              ),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [AppColors.primaryContainer, Colors.white],
+            // ── Hero Header Card ─────────────────────────────
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: AppColors.border),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.primary.withValues(alpha: 0.08),
+                    blurRadius: 24,
+                    offset: const Offset(0, 8),
                   ),
-                ),
-                child: Column(
-                  children: [
-                    ProfileAvatarWidget(
+                ],
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.primary, width: 2),
+                    ),
+                    child: ProfileAvatarWidget(
                       photoUrl: photoUrlState.valueOrNull,
                       name: profile.fullName,
-                      radius: 46,
+                      radius: 48,
                     ),
-                    const SizedBox(height: 14),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    profile.fullName ?? 'Pilgrim',
+                    style: AppTextStyles.headlineLarge.copyWith(
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.3,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  if (profile.mobile != null) ...[
+                    const SizedBox(height: 4),
                     Text(
-                      profile.fullName ?? 'Pilgrim',
-                      style: AppTextStyles.headlineLarge.copyWith(
-                        fontWeight: FontWeight.bold,
+                      profile.mobile!,
+                      style: AppTextStyles.bodyMedium.copyWith(
+                        color: AppColors.onSurfaceMuted,
                       ),
-                      textAlign: TextAlign.center,
                     ),
-                    if (profile.mobile != null) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        profile.mobile!,
-                        style: AppTextStyles.bodySmall,
+                  ],
+                  if (profile.city != null || profile.state != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryContainer,
+                        borderRadius: BorderRadius.circular(20),
                       ),
-                    ],
-                    if (profile.city != null || profile.state != null) ...[
-                      const SizedBox(height: 6),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.location_on_outlined,
+                          const Icon(Icons.location_on_rounded,
                               size: 14, color: AppColors.primary),
-                          const SizedBox(width: 4),
+                          const SizedBox(width: 6),
                           Text(
                             [profile.city, profile.state]
                                 .where((v) => v != null)
                                 .join(', '),
                             style: AppTextStyles.bodySmall.copyWith(
                               color: AppColors.primary,
-                              fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                         ],
                       ),
-                    ],
+                    ),
                   ],
-                ),
+                ],
               ),
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 24),
 
-            // ── Personal Information ─────────────────────────
+            // ── Personal Details Group ────────────────────────
             const _SectionHeader(title: 'Personal Information'),
-            _InfoTile(
-              icon: Icons.person_outline_rounded,
-              title: 'Full Name',
-              value: profile.fullName ?? '—',
-            ),
-            _InfoTile(
-              icon: Icons.phone_outlined,
-              title: 'Mobile',
-              value: profile.mobile ?? '—',
-            ),
-            if (profile.email != null)
-              _InfoTile(
-                icon: Icons.email_outlined,
-                title: 'Email',
-                value: profile.email!,
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: AppColors.border),
               ),
-            _InfoTile(
-              icon: Icons.wc_outlined,
-              title: 'Gender',
-              value: profile.gender?.displayLabel ?? '—',
-            ),
-            _InfoTile(
-              icon: Icons.cake_outlined,
-              title: 'Date of Birth',
-              value: profile.dateOfBirth != null
-                  ? DateFormat('dd MMMM yyyy').format(profile.dateOfBirth!)
-                  : '—',
-            ),
-            if (profile.city != null)
-              _InfoTile(
-                icon: Icons.location_city_outlined,
-                title: 'City',
-                value: profile.city!,
-              ),
-            if (profile.state != null)
-              _InfoTile(
-                icon: Icons.map_outlined,
-                title: 'State',
-                value: profile.state!,
-              ),
-
-            const SizedBox(height: 16),
-
-            // ── App Actions ───────────────────────────────────
-            const _SectionHeader(title: 'App'),
-            _ActionTile(
-              icon: Icons.notifications_outlined,
-              title: 'Notifications',
-              onTap: () => context.push(AppRoutes.notifications),
-            ),
-            _ActionTile(
-              icon: Icons.privacy_tip_outlined,
-              title: 'Privacy Policy',
-              onTap: () =>
-                  launchUrl(Uri.parse(AppConstants.privacyPolicyUrl)),
-            ),
-            _ActionTile(
-              icon: Icons.article_outlined,
-              title: 'Terms of Service',
-              onTap: () => launchUrl(Uri.parse(AppConstants.termsUrl)),
-            ),
-            _ActionTile(
-              icon: Icons.info_outline_rounded,
-              title: 'About Tirth',
-              onTap: () => showAboutDialog(
-                context: context,
-                applicationName: 'Tirth',
-                applicationVersion: AppConstants.appVersion,
-                applicationLegalese:
-                    '© 2026 Tirth. All rights reserved.',
+              child: Column(
+                children: [
+                  _InfoTile(
+                    icon: Icons.person_outline_rounded,
+                    title: 'Full Name',
+                    value: profile.fullName ?? '—',
+                    showDivider: true,
+                  ),
+                  _InfoTile(
+                    icon: Icons.phone_outlined,
+                    title: 'Mobile Number',
+                    value: profile.mobile ?? '—',
+                    showDivider: true,
+                  ),
+                  if (profile.email != null)
+                    _InfoTile(
+                      icon: Icons.email_outlined,
+                      title: 'Email Address',
+                      value: profile.email!,
+                      showDivider: true,
+                    ),
+                  _InfoTile(
+                    icon: Icons.wc_outlined,
+                    title: 'Gender',
+                    value: profile.gender?.displayLabel ?? '—',
+                    showDivider: true,
+                  ),
+                  _InfoTile(
+                    icon: Icons.cake_outlined,
+                    title: 'Date of Birth',
+                    value: profile.dateOfBirth != null
+                        ? DateFormat('dd MMMM yyyy').format(profile.dateOfBirth!)
+                        : '—',
+                    showDivider: profile.city != null || profile.state != null,
+                  ),
+                  if (profile.city != null)
+                    _InfoTile(
+                      icon: Icons.location_city_outlined,
+                      title: 'City',
+                      value: profile.city!,
+                      showDivider: profile.state != null,
+                    ),
+                  if (profile.state != null)
+                    _InfoTile(
+                      icon: Icons.map_outlined,
+                      title: 'State',
+                      value: profile.state!,
+                      showDivider: false,
+                    ),
+                ],
               ),
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 24),
+
+            // ── App Settings Group ───────────────────────────
+            const _SectionHeader(title: 'Preferences & Support'),
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Column(
+                children: [
+                  _ActionTile(
+                    icon: Icons.notifications_none_rounded,
+                    title: 'Notifications & Alerts',
+                    onTap: () => context.push(AppRoutes.notifications),
+                    showDivider: true,
+                  ),
+                  _ActionTile(
+                    icon: Icons.privacy_tip_outlined,
+                    title: 'Privacy Policy',
+                    onTap: () =>
+                        launchUrl(Uri.parse(AppConstants.privacyPolicyUrl)),
+                    showDivider: true,
+                  ),
+                  _ActionTile(
+                    icon: Icons.article_outlined,
+                    title: 'Terms of Service',
+                    onTap: () => launchUrl(Uri.parse(AppConstants.termsUrl)),
+                    showDivider: true,
+                  ),
+                  _ActionTile(
+                    icon: Icons.info_outline_rounded,
+                    title: 'About TirthTrack',
+                    onTap: () => showAboutDialog(
+                      context: context,
+                      applicationName: 'Tirth',
+                      applicationVersion: AppConstants.appVersion,
+                      applicationLegalese:
+                          '© 2026 Tirth. All rights reserved.',
+                    ),
+                    showDivider: false,
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 28),
 
             // ── Logout Button ─────────────────────────────────
-            OutlinedButton.icon(
-              icon: const Icon(Icons.logout_rounded, color: AppColors.error),
-              label: Text(
-                'Sign Out',
-                style: AppTextStyles.button.copyWith(color: AppColors.error),
-              ),
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: AppColors.error, width: 1.5),
-                minimumSize: const Size.fromHeight(52),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
+            AppButton(
+              label: 'Sign Out Account',
+              icon: Icons.logout_rounded,
+              variant: AppButtonVariant.filled,
+              color: AppColors.primary,
               onPressed: () => _confirmSignOut(context, ref),
             ),
 
-            const SizedBox(height: 32),
+            const SizedBox(height: 40),
           ],
         ),
       ),
@@ -232,7 +278,7 @@ class ProfileScreen extends ConsumerWidget {
             },
             child: const Text(
               'Sign Out',
-              style: TextStyle(color: AppColors.error),
+              style: TextStyle(color: AppColors.error, fontWeight: FontWeight.bold),
             ),
           ),
         ],
@@ -248,13 +294,13 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
+      padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
       child: Text(
         title.toUpperCase(),
         style: AppTextStyles.labelSmall.copyWith(
           letterSpacing: 1.2,
           color: AppColors.primary,
-          fontWeight: FontWeight.bold,
+          fontWeight: FontWeight.w800,
         ),
       ),
     );
@@ -266,33 +312,37 @@ class _InfoTile extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.value,
+    this.showDivider = true,
   });
 
   final IconData icon;
   final String title;
   final String value;
+  final bool showDivider;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border, width: 1),
-      ),
-      child: ListTile(
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: AppColors.surfaceVariant,
-            borderRadius: BorderRadius.circular(10),
+    return Column(
+      children: [
+        ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          leading: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceVariant,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: AppColors.primary, size: 20),
           ),
-          child: Icon(icon, color: AppColors.iconDark, size: 20),
+          title: Text(title, style: AppTextStyles.caption.copyWith(color: AppColors.onSurfaceMuted)),
+          subtitle: Text(value, style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
         ),
-        title: Text(title, style: AppTextStyles.labelSmall),
-        subtitle: Text(value, style: AppTextStyles.bodyMedium),
-      ),
+        if (showDivider)
+          const Padding(
+            padding: EdgeInsets.only(left: 60),
+            child: Divider(height: 1, color: AppColors.divider),
+          ),
+      ],
     );
   }
 }
@@ -302,35 +352,38 @@ class _ActionTile extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.onTap,
+    this.showDivider = true,
   });
 
   final IconData icon;
   final String title;
   final VoidCallback onTap;
+  final bool showDivider;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border, width: 1),
-      ),
-      child: ListTile(
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: AppColors.surfaceVariant,
-            borderRadius: BorderRadius.circular(10),
+    return Column(
+      children: [
+        ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          leading: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceVariant,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: AppColors.iconDark, size: 20),
           ),
-          child: Icon(icon, color: AppColors.iconDark, size: 20),
+          title: Text(title, style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
+          trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.onSurfaceMuted),
+          onTap: onTap,
         ),
-        title: Text(title, style: AppTextStyles.bodyMedium),
-        trailing:
-            const Icon(Icons.chevron_right_rounded, color: AppColors.iconDark),
-        onTap: onTap,
-      ),
+        if (showDivider)
+          const Padding(
+            padding: EdgeInsets.only(left: 60),
+            child: Divider(height: 1, color: AppColors.divider),
+          ),
+      ],
     );
   }
 }

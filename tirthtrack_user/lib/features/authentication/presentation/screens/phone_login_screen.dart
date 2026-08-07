@@ -63,89 +63,149 @@ class _PhoneLoginScreenState extends ConsumerState<PhoneLoginScreen> {
 
     return Scaffold(
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 30),
+        child: Center(
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const SizedBox(height: 12),
 
-                // ── Brand Header with Splash Logo ─────────────
-                Row(
-                  children: [
-                    Image.asset(
+                  // ── Hero Branding Container ──────────────────
+                  Container(
+                    width: 160,
+                    height: 160,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(28),
+                    ),
+                    child: Image.asset(
                       'assets/icons/app_logo.png',
-                      width: 44,
-                      height: 44,
                       color: AppColors.primary,
                       fit: BoxFit.contain,
                       errorBuilder: (_, __, ___) => const Icon(
                         Icons.temple_hindu_rounded,
                         color: AppColors.primary,
-                        size: 32,
+                        size: 150,
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Text('Tirth', style: AppTextStyles.brandTitle),
-                  ],
-                ),
+                  ),
 
-                const SizedBox(height: 40),
+                  const SizedBox(height: 36),
 
-                Text('Welcome', style: AppTextStyles.displayMedium),
-                const SizedBox(height: 8),
-                Text(
-                  'Enter your mobile number to continue your\npilgrimage journey.',
-                  style: AppTextStyles.bodyMedium,
-                ),
-
-                const SizedBox(height: 36),
-
-                // ── Phone field ────────────────────────────────
-                AppTextField(
-                  controller: _phoneController,
-                  label: 'Mobile Number',
-                  hint: '+91 9876543210',
-                  keyboardType: TextInputType.phone,
-                  prefixIcon: const Icon(Icons.phone_rounded),
-                  textInputAction: TextInputAction.done,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9+\s]')),
-                    LengthLimitingTextInputFormatter(15),
-                  ],
-                  validator: Validators.phone,
-                  onFieldSubmitted: (_) => _sendOtp(),
-                ),
-
-                const SizedBox(height: 8),
-                Text(
-                  'We will send a 6-digit OTP to verify your number.',
-                  style: AppTextStyles.caption,
-                ),
-
-                const SizedBox(height: 32),
-
-                // ── Send OTP button ────────────────────────────
-                AppButton(
-                  label: 'Send OTP',
-                  icon: Icons.arrow_forward_rounded,
-                  onPressed: isLoading ? null : _sendOtp,
-                  isLoading: isLoading,
-                ),
-
-                const SizedBox(height: 48),
-
-                // ── Terms note ─────────────────────────────────
-                Center(
-                  child: Text(
-                    'By continuing, you agree to our Terms of Service\nand Privacy Policy.',
-                    style: AppTextStyles.caption,
+                  Text(
+                    'Welcome Pilgrim',
+                    style: AppTextStyles.displayMedium.copyWith(
+                      letterSpacing: -0.5,
+                      fontWeight: FontWeight.w800,
+                    ),
                     textAlign: TextAlign.center,
                   ),
-                ),
-              ],
+                  const SizedBox(height: 10),
+                  Text(
+                    'Enter your mobile number to begin your\nsacred Nashik Kumbh Mela journey.',
+                    style: AppTextStyles.bodyMedium.copyWith(
+                      color: AppColors.onSurfaceMuted,
+                      height: 1.5,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+
+                  const SizedBox(height: 40),
+
+                  // ── Form Container Card ─────────────────────
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(color: AppColors.border),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.03),
+                          blurRadius: 20,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Mobile Number',
+                          style: AppTextStyles.labelLarge.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        AppTextField(
+                          controller: _phoneController,
+                          hint: '+91 9876543210',
+                          keyboardType: TextInputType.phone,
+                          prefixIcon: const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 14),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '🇮🇳',
+                                  style: TextStyle(fontSize: 20),
+                                ),
+                                SizedBox(width: 6),
+                                Icon(Icons.phone_outlined, size: 20),
+                              ],
+                            ),
+                          ),
+                          textInputAction: TextInputAction.done,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(
+                                RegExp(r'[0-9+\s]')),
+                            LengthLimitingTextInputFormatter(15),
+                          ],
+                          validator: Validators.phone,
+                          onFieldSubmitted: (_) => _sendOtp(),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            const Icon(Icons.shield_outlined,
+                                size: 14, color: AppColors.onSurfaceMuted),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                'A 6-digit OTP will be sent for instant authentication.',
+                                style: AppTextStyles.caption,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 28),
+
+                  // ── Send OTP button ────────────────────────────
+                  AppButton(
+                    label: 'Get Verification Code',
+                    icon: Icons.arrow_forward_rounded,
+                    onPressed: isLoading ? null : _sendOtp,
+                    isLoading: isLoading,
+                  ),
+
+                  const SizedBox(height: 36),
+
+                  // ── Terms note ─────────────────────────────────
+                  Text(
+                    'By continuing, you accept our Terms of Service\n& Privacy Policy.',
+                    style: AppTextStyles.caption.copyWith(height: 1.4),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
             ),
           ),
         ),

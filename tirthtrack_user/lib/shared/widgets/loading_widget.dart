@@ -22,7 +22,6 @@ class LoadingWidget extends StatelessWidget {
           if (showLogo) ...[
             Image.asset(
               'assets/icons/app_logo.png',
-              width: 48,
               height: 48,
               color: AppColors.primary,
               fit: BoxFit.contain,

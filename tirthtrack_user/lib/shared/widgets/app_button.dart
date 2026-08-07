@@ -32,51 +32,84 @@ class AppButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final effectiveColor = color ?? AppColors.primary;
+    final textColor = (variant == AppButtonVariant.filled) ? Colors.white : effectiveColor;
+
     final child = isLoading
-        ? const SizedBox(
+        ? SizedBox(
             width: 20,
             height: 20,
             child: CircularProgressIndicator(
               strokeWidth: 2,
-              color: Colors.white,
+              color: textColor,
             ),
           )
         : Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (icon != null) ...[
-                Icon(icon, size: 18),
+                Icon(icon, size: 18, color: textColor),
                 const SizedBox(width: 8),
               ],
-              Text(label, style: AppTextStyles.button),
+              Text(
+                label,
+                style: AppTextStyles.button.copyWith(color: textColor),
+              ),
             ],
           );
 
     Widget button;
     switch (variant) {
       case AppButtonVariant.filled:
-        button = ElevatedButton(
-          onPressed: isLoading ? null : onPressed,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: effectiveColor,
-            minimumSize: expand ? const Size.fromHeight(52) : null,
+        button = Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: onPressed != null && !isLoading
+                ? [
+                    BoxShadow(
+                      color: effectiveColor.withValues(alpha: 0.28),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                  ]
+                : null,
           ),
-          child: child,
+          child: ElevatedButton(
+            onPressed: isLoading ? null : onPressed,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: effectiveColor,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              minimumSize: expand ? const Size.fromHeight(56) : null,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+            child: child,
+          ),
         );
       case AppButtonVariant.outlined:
         button = OutlinedButton(
           onPressed: isLoading ? null : onPressed,
           style: OutlinedButton.styleFrom(
             foregroundColor: effectiveColor,
-            side: BorderSide(color: effectiveColor),
-            minimumSize: expand ? const Size.fromHeight(52) : null,
+            backgroundColor: Colors.white,
+            side: BorderSide(color: effectiveColor.withValues(alpha: 0.5), width: 1.5),
+            minimumSize: expand ? const Size.fromHeight(56) : null,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
           ),
           child: child,
         );
       case AppButtonVariant.text:
         button = TextButton(
           onPressed: isLoading ? null : onPressed,
-          style: TextButton.styleFrom(foregroundColor: effectiveColor),
+          style: TextButton.styleFrom(
+            foregroundColor: effectiveColor,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
           child: child,
         );
     }

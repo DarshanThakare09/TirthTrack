@@ -93,24 +93,6 @@ class _ChatbotScreenState extends ConsumerState<ChatbotScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          children: [
-            Image.asset(
-              'assets/icons/app_logo.png',
-              width: 28,
-              height: 28,
-              color: AppColors.primary,
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => const Icon(
-                Icons.smart_toy_rounded,
-                color: AppColors.primary,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 8),
-            const Text('Tirth Assistant'),
-          ],
-        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.history_rounded),
@@ -239,8 +221,7 @@ class _WelcomeState extends StatelessWidget {
         children: [
           Image.asset(
             'assets/icons/app_logo.png',
-            width: 72,
-            height: 72,
+            height: 64,
             color: AppColors.primary,
             fit: BoxFit.contain,
             errorBuilder: (_, __, ___) => const Icon(
@@ -543,7 +524,6 @@ class _AssistantAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Image.asset(
       'assets/icons/app_logo.png',
-      width: 28,
       height: 28,
       color: AppColors.primary,
       fit: BoxFit.contain,
@@ -653,81 +633,85 @@ class _InputBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 8, 8, 16),
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        border: Border(top: BorderSide(color: AppColors.border)),
-      ),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+      color: Colors.transparent,
       child: SafeArea(
         top: false,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Expanded(
-              child: TextField(
-                controller: controller,
-                maxLines: 4,
-                minLines: 1,
-                textInputAction: TextInputAction.newline,
-                decoration: InputDecoration(
-                  hintText: 'Ask about Kumbh Mela…',
-                  contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 12),
-                  isDense: true,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide:
-                        const BorderSide(color: AppColors.border),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide:
-                        const BorderSide(color: AppColors.border),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: const BorderSide(
-                        color: AppColors.primary, width: 1.5),
-                  ),
-                ),
-                onSubmitted: (_) => onSend(),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 6, 6, 6),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(32),
+            border: Border.all(color: AppColors.border),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 20,
+                offset: const Offset(0, 4),
               ),
-            ),
-            const SizedBox(width: 8),
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              child: isSending
-                  ? Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryContainer,
-                        borderRadius: BorderRadius.circular(22),
-                      ),
-                      child: const Padding(
-                        padding: EdgeInsets.all(12),
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: AppColors.primary,
+            ],
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  maxLines: 4,
+                  minLines: 1,
+                  textInputAction: TextInputAction.newline,
+                  style: AppTextStyles.bodyMedium,
+                  decoration: const InputDecoration(
+                    hintText: 'Ask about Nashik Kumbh Mela…',
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 10),
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    filled: false,
+                  ),
+                  onSubmitted: (_) => onSend(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                child: isSending
+                    ? Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryContainer,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      )
+                    : Material(
+                        color: AppColors.primary,
+                        shape: const CircleBorder(),
+                        elevation: 2,
+                        shadowColor: AppColors.primary.withValues(alpha: 0.4),
+                        child: InkWell(
+                          onTap: onSend,
+                          customBorder: const CircleBorder(),
+                          child: const SizedBox(
+                            width: 44,
+                            height: 44,
+                            child: Icon(Icons.arrow_upward_rounded,
+                                color: Colors.white, size: 22),
+                          ),
                         ),
                       ),
-                    )
-                  : Material(
-                      color: AppColors.primary,
-                      borderRadius: BorderRadius.circular(22),
-                      child: InkWell(
-                        onTap: onSend,
-                        borderRadius: BorderRadius.circular(22),
-                        child: const SizedBox(
-                          width: 44,
-                          height: 44,
-                          child: Icon(Icons.send_rounded,
-                              color: Colors.white, size: 20),
-                        ),
-                      ),
-                    ),
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
     );

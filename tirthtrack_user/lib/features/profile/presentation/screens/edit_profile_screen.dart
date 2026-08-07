@@ -142,10 +142,10 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     };
 
     await ref.read(profileProvider.notifier).updateProfile(updates);
+    if (!mounted) return;
     setState(() => _isSubmitting = false);
 
     final pState = ref.read(profileProvider);
-    if (!mounted) return;
 
     pState.when(
       data: (_) {

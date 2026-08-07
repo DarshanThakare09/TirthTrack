@@ -103,13 +103,13 @@ class _CompleteProfileScreenState
     };
 
     await ref.read(profileProvider.notifier).updateProfile(updates);
+    if (!mounted) return;
     setState(() => _isSubmitting = false);
 
     final profileState = ref.read(profileProvider);
-    if (!mounted) return;
 
     profileState.when(
-      data: (_) => context.go(AppRoutes.locationPermission),
+      data: (_) => context.go(AppRoutes.maps),
       error: (e, _) {
         final msg = e is AppException ? e.message : 'Failed to save profile.';
         ScaffoldMessenger.of(context)
@@ -146,7 +146,7 @@ class _CompleteProfileScreenState
                 AppTextField(
                   controller: _nameController,
                   label: 'Full Name *',
-                  hint: 'Ramesh Sharma',
+                  hint: 'Darshan Thakare',
                   prefixIcon: const Icon(Icons.person_outline_rounded),
                   textInputAction: TextInputAction.next,
                   validator: Validators.name,

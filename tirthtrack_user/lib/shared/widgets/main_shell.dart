@@ -7,18 +7,61 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/services/location_service.dart';
 import '../../core/theme/app_colors.dart';
+import '../../features/location/providers/location_provider.dart';
 import '../../features/notifications/providers/notification_provider.dart';
+import '../../router/app_router.dart';
 
 /// Main shell with bottom navigation bar attached to the bottom.
 /// Only 3 tabs: Maps, Chatbot, Profile.
-class MainShell extends ConsumerWidget {
+class MainShell extends ConsumerStatefulWidget {
   const MainShell({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MainShell> createState() => _MainShellState();
+}
+
+class _MainShellState extends ConsumerState<MainShell>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _ensureLocationActive();
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _ensureLocationActive();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  Future<void> _ensureLocationActive() async {
+    final isAvailable = await LocationService.instance.isAvailable;
+    if (!isAvailable && mounted) {
+      context.go(AppRoutes.locationPermission);
+      return;
+    }
+
+    if (mounted) {
+      ref.read(locationTrackingProvider.notifier).startTracking();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final unreadCount = ref.watch(unreadNotificationCountProvider);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -29,7 +72,7 @@ class MainShell extends ConsumerWidget {
         systemNavigationBarIconBrightness: Brightness.dark,
       ),
       child: Scaffold(
-        body: navigationShell,
+        body: widget.navigationShell,
         bottomNavigationBar: Container(
           decoration: BoxDecoration(
             color: Colors.white,
@@ -47,13 +90,13 @@ class MainShell extends ConsumerWidget {
           child: SafeArea(
             top: false,
             child: NavigationBar(
-              selectedIndex: navigationShell.currentIndex,
+              selectedIndex: widget.navigationShell.currentIndex,
               elevation: 0,
               backgroundColor: Colors.white,
               onDestinationSelected: (index) {
-                navigationShell.goBranch(
+                widget.navigationShell.goBranch(
                   index,
-                  initialLocation: index == navigationShell.currentIndex,
+                  initialLocation: index == widget.navigationShell.currentIndex,
                 );
               },
               destinations: [

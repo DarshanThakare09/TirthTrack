@@ -13,11 +13,97 @@ import '../../../../router/app_router.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../../providers/location_provider.dart';
 
-class LocationPermissionScreen extends ConsumerWidget {
+class LocationPermissionScreen extends ConsumerStatefulWidget {
   const LocationPermissionScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<LocationPermissionScreen> createState() =>
+      _LocationPermissionScreenState();
+}
+
+class _LocationPermissionScreenState
+    extends ConsumerState<LocationPermissionScreen>
+    with WidgetsBindingObserver {
+  bool _isGpsServiceEnabled = true;
+  bool _isChecking = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkLocationStateAndProceedIfGranted();
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkLocationStateAndProceedIfGranted();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  Future<void> _checkLocationStateAndProceedIfGranted() async {
+    final service = LocationService.instance;
+    final gpsEnabled = await service.isServiceEnabled();
+    await ref.read(locationPermissionProvider.notifier).checkPermissionOnly();
+
+    if (mounted) {
+      setState(() {
+        _isGpsServiceEnabled = gpsEnabled;
+      });
+    }
+
+    final isAvailable = await service.isAvailable;
+    if (isAvailable && mounted) {
+      await ref.read(locationTrackingProvider.notifier).startTracking();
+      if (mounted) {
+        context.go(AppRoutes.maps);
+      }
+    }
+  }
+
+  Future<void> _requestAndProceed() async {
+    setState(() => _isChecking = true);
+    try {
+      final service = LocationService.instance;
+      final gpsEnabled = await service.isServiceEnabled();
+      if (!gpsEnabled) {
+        await service.openLocationSettings();
+        if (mounted) {
+          setState(() {
+            _isGpsServiceEnabled = false;
+            _isChecking = false;
+          });
+        }
+        return;
+      }
+
+      await ref
+          .read(locationTrackingProvider.notifier)
+          .initializeLocationService();
+
+      final isAvailable = await service.isAvailable;
+      if (isAvailable && mounted) {
+        context.go(AppRoutes.maps);
+      } else {
+        await _checkLocationStateAndProceedIfGranted();
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isChecking = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final permissionStatus = ref.watch(locationPermissionProvider);
 
     return Scaffold(
@@ -56,13 +142,13 @@ class LocationPermissionScreen extends ConsumerWidget {
               const SizedBox(height: 32),
 
               Text(
-                'Enable Location',
+                'Location Access Required',
                 style: AppTextStyles.displayMedium,
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
               Text(
-                'Tirth needs your location to show nearby services, routes, and police bases during Kumbh Mela.',
+                'Live location is mandatory to provide real-time pilgrim safety, nearest ghat navigation, and emergency assistance during the Kumbh Mela.',
                 style: AppTextStyles.bodyMedium,
                 textAlign: TextAlign.center,
               ),
@@ -70,22 +156,62 @@ class LocationPermissionScreen extends ConsumerWidget {
               const SizedBox(height: 24),
 
               // ── Features ─────────────────────────────────────
-              _FeatureRow(
+              const _FeatureRow(
+                icon: Icons.security_rounded,
+                text: 'Live pilgrim safety & emergency assistance',
+              ),
+              const _FeatureRow(
                 icon: Icons.route_rounded,
-                text: 'Show your position on routes',
+                text: 'Real-time position along Kumbh Mela routes',
               ),
-              _FeatureRow(
+              const _FeatureRow(
                 icon: Icons.local_hospital_rounded,
-                text: 'Find nearest services',
+                text: 'Instant distance to nearest medical & civic services',
               ),
-              _FeatureRow(
+              const _FeatureRow(
                 icon: Icons.local_police_rounded,
-                text: 'Locate police bases',
+                text: 'Quick navigation to emergency police chowkis',
               ),
 
               const SizedBox(height: 36),
 
-              if (permissionStatus == LocationPermissionStatus.permanentlyDenied)
+              if (!_isGpsServiceEnabled)
+                Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.warningContainer,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.location_off_rounded,
+                              color: AppColors.warning, size: 20),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Device Location (GPS) is turned off. Please enable GPS in device settings.',
+                              style: AppTextStyles.bodySmall.copyWith(
+                                  color: AppColors.warning),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    AppButton(
+                      label: 'Turn On Device Location (GPS)',
+                      icon: Icons.settings_rounded,
+                      isLoading: _isChecking,
+                      onPressed: () => ref
+                          .read(locationPermissionProvider.notifier)
+                          .openLocationSettings(),
+                    ),
+                  ],
+                )
+              else if (permissionStatus ==
+                  LocationPermissionStatus.permanentlyDenied)
                 Column(
                   children: [
                     Container(
@@ -101,7 +227,7 @@ class LocationPermissionScreen extends ConsumerWidget {
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
-                              'Location access was denied permanently. Please enable it from app settings.',
+                              'Location access was permanently denied. Please allow location permissions in App Settings to proceed.',
                               style: AppTextStyles.bodySmall.copyWith(
                                   color: AppColors.warning),
                             ),
@@ -111,17 +237,12 @@ class LocationPermissionScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: 16),
                     AppButton(
-                      label: 'Open Settings',
+                      label: 'Open App Settings',
                       icon: Icons.settings_rounded,
+                      isLoading: _isChecking,
                       onPressed: () => ref
                           .read(locationPermissionProvider.notifier)
                           .openSettings(),
-                    ),
-                    const SizedBox(height: 12),
-                    AppButton(
-                      label: 'Continue Without Location',
-                      variant: AppButtonVariant.outlined,
-                      onPressed: () => context.go(AppRoutes.maps),
                     ),
                   ],
                 )
@@ -129,15 +250,10 @@ class LocationPermissionScreen extends ConsumerWidget {
                 Column(
                   children: [
                     AppButton(
-                      label: 'Allow Location',
+                      label: 'Enable Location & Continue',
                       icon: Icons.my_location_rounded,
-                      onPressed: () => _requestAndProceed(context, ref),
-                    ),
-                    const SizedBox(height: 12),
-                    AppButton(
-                      label: 'Not Now',
-                      variant: AppButtonVariant.text,
-                      onPressed: () => context.go(AppRoutes.maps),
+                      isLoading: _isChecking,
+                      onPressed: _requestAndProceed,
                     ),
                   ],
                 ),
@@ -146,18 +262,6 @@ class LocationPermissionScreen extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  Future<void> _requestAndProceed(BuildContext context, WidgetRef ref) async {
-    await ref.read(locationPermissionProvider.notifier).checkAndRequest();
-    await ref.read(locationTrackingProvider.notifier).startTracking();
-    final pos = await LocationService.instance.getCurrentPosition();
-    if (pos != null) {
-      ref.read(currentPositionProvider.notifier).state = pos;
-    }
-    if (context.mounted) {
-      context.go(AppRoutes.maps);
-    }
   }
 }
 

@@ -36,15 +36,15 @@ class ProfileRepository {
       }
 
       return ProfileModel.fromJson(data);
-    } on PostgrestException catch (e) {
-      appLogger.e('ProfileRepository fetchProfile PostgrestException: ${e.message}');
-      return _createFallbackProfile(userId);
     } on TimeoutException catch (e) {
       appLogger.w('ProfileRepository fetchProfile timeout: $e');
-      return _createFallbackProfile(userId);
+      throw const NoInternetException();
+    } on PostgrestException catch (e) {
+      appLogger.e('ProfileRepository fetchProfile PostgrestException: ${e.message}');
+      throw ServerException(e.message);
     } catch (e) {
-      appLogger.w('ProfileRepository fetchProfile fallback due to error: $e');
-      return _createFallbackProfile(userId);
+      appLogger.w('ProfileRepository fetchProfile network error: $e');
+      throw const NoInternetException();
     }
   }
 

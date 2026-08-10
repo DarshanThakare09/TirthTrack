@@ -19,7 +19,6 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/config/app_config.dart';
-import '../../../../core/services/location_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../shared/widgets/error_widget.dart';
@@ -43,21 +42,11 @@ class _RoutesTabState extends ConsumerState<RoutesTab>
   @override
   bool get wantKeepAlive => true;
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initUserLocation();
-    });
-  }
-
   Future<void> _initUserLocation() async {
-    await ref.read(locationPermissionProvider.notifier).checkAndRequest();
-    await ref.read(locationTrackingProvider.notifier).startTracking();
-
-    final pos = await LocationService.instance.getCurrentPosition();
+    final pos = await ref
+        .read(locationTrackingProvider.notifier)
+        .initializeLocationService();
     if (pos != null && mounted) {
-      ref.read(currentPositionProvider.notifier).state = pos;
       _zoomToPosition(pos);
     }
   }
@@ -67,8 +56,6 @@ class _RoutesTabState extends ConsumerState<RoutesTab>
     final pos = ref.read(currentPositionProvider);
     if (pos != null) {
       _zoomToPosition(pos);
-    } else {
-      _initUserLocation();
     }
   }
 
@@ -84,7 +71,8 @@ class _RoutesTabState extends ConsumerState<RoutesTab>
     }
   }
 
-  void _recenterToUser(Position? position) {
+  void _recenterToUser() {
+    final position = ref.read(currentPositionProvider);
     if (position != null) {
       _zoomToPosition(position);
     } else {
@@ -103,7 +91,6 @@ class _RoutesTabState extends ConsumerState<RoutesTab>
     super.build(context);
     final routesState = ref.watch(routesProvider);
     final selectedRoute = ref.watch(selectedRouteProvider);
-    final position = ref.watch(currentPositionProvider);
 
     ref.listen<Position?>(currentPositionProvider, (previous, next) {
       if (next != null && !_hasCenteredOnUser) {
@@ -117,8 +104,9 @@ class _RoutesTabState extends ConsumerState<RoutesTab>
 
     final nodes = nodesState?.valueOrNull ?? [];
 
-    final initialTarget = position != null
-        ? LatLng(position.latitude, position.longitude)
+    final currentPos = ref.read(currentPositionProvider);
+    final initialTarget = currentPos != null
+        ? LatLng(currentPos.latitude, currentPos.longitude)
         : const LatLng(
             AppConfig.kumbhCenterLat,
             AppConfig.kumbhCenterLng,
@@ -195,7 +183,7 @@ class _RoutesTabState extends ConsumerState<RoutesTab>
               return GoogleMap(
                 initialCameraPosition: CameraPosition(
                   target: initialTarget,
-                  zoom: position != null ? 15.5 : 13.5,
+                  zoom: currentPos != null ? 15.5 : 13.5,
                 ),
                 onMapCreated: _onMapCreated,
                 polylines: polylines,
@@ -208,10 +196,10 @@ class _RoutesTabState extends ConsumerState<RoutesTab>
                 rotateGesturesEnabled: true,
                 tiltGesturesEnabled: true,
                 compassEnabled: true,
-                mapToolbarEnabled: true,
+                mapToolbarEnabled: false,
                 gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
                   Factory<OneSequenceGestureRecognizer>(
-                    () => EagerGestureRecognizer(),
+                    () => ScaleGestureRecognizer(),
                   ),
                 },
               );
@@ -382,7 +370,7 @@ class _RoutesTabState extends ConsumerState<RoutesTab>
                     borderRadius: BorderRadius.circular(20),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(20),
-                      onTap: () => _recenterToUser(position),
+                      onTap: _recenterToUser,
                       child: const Padding(
                         padding: EdgeInsets.all(10),
                         child: Icon(Icons.my_location_rounded, size: 22, color: AppColors.primary),
@@ -447,195 +435,198 @@ class _RouteDetailBottomSheet extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Drag handle
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: AppColors.border,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-
-          // Header
-          Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
+      child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Drag handle
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
                 decoration: BoxDecoration(
-                  color: AppColors.primaryContainer,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(
-                  Icons.route_rounded,
-                  color: AppColors.primary,
-                  size: 26,
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      route.routeName,
-                      style: AppTextStyles.headlineSmall.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    if (tappedNode != null)
+            ),
+
+            // Header
+            Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryContainer,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.route_rounded,
+                    color: AppColors.primary,
+                    size: 26,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        'Selected Node: ${tappedNode!.nodeName}',
-                        style: AppTextStyles.bodySmall.copyWith(
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.w600,
+                        route.routeName,
+                        style: AppTextStyles.headlineSmall.copyWith(
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                  ],
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.close_rounded),
-                onPressed: () => Navigator.pop(context),
-              ),
-            ],
-          ),
-
-          if (route.description != null && route.description!.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(
-              route.description!,
-              style: AppTextStyles.bodyMedium,
-            ),
-          ],
-
-          const SizedBox(height: 14),
-
-          // Stats Chips (Distance, Time, Waypoints)
-          Row(
-            children: [
-              _RouteStatChip(
-                icon: Icons.straighten_rounded,
-                label: route.formattedDistance,
-                color: AppColors.primary,
-              ),
-              const SizedBox(width: 10),
-              _RouteStatChip(
-                icon: Icons.schedule_rounded,
-                label: route.formattedTime,
-                color: AppColors.info,
-              ),
-              const SizedBox(width: 10),
-              _RouteStatChip(
-                icon: Icons.place_rounded,
-                label: '${nodes.length} Nodes',
-                color: AppColors.accent,
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 16),
-
-          // Nodes Timeline Preview
-          if (nodes.isNotEmpty) ...[
-            Text(
-              'Route Waypoints',
-              style: AppTextStyles.labelLarge.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 70,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: nodes.length,
-                separatorBuilder: (_, __) => const Icon(
-                  Icons.arrow_forward_rounded,
-                  size: 16,
-                  color: AppColors.onSurfaceMuted,
-                ),
-                itemBuilder: (ctx, idx) {
-                  final n = nodes[idx];
-                  final isSelectedNode = tappedNode?.id == n.id;
-                  return Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: isSelectedNode
-                          ? AppColors.primaryContainer
-                          : AppColors.surfaceVariant,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: isSelectedNode
-                            ? AppColors.primary
-                            : AppColors.border,
-                      ),
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+                      if (tappedNode != null)
                         Text(
-                          '#${n.nodeOrder} ${n.nodeName}',
-                          style: AppTextStyles.labelSmall.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: isSelectedNode
-                                ? AppColors.primary
-                                : AppColors.onSurface,
+                          'Selected Node: ${tappedNode!.nodeName}',
+                          style: AppTextStyles.bodySmall.copyWith(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                        if (n.distanceFromStartKm != null)
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+
+            if (route.description != null && route.description!.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(
+                route.description!,
+                style: AppTextStyles.bodyMedium,
+              ),
+            ],
+
+            const SizedBox(height: 14),
+
+            // Stats Chips (Distance, Time, Waypoints)
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _RouteStatChip(
+                  icon: Icons.straighten_rounded,
+                  label: route.formattedDistance,
+                  color: AppColors.primary,
+                ),
+                _RouteStatChip(
+                  icon: Icons.schedule_rounded,
+                  label: route.formattedTime,
+                  color: AppColors.info,
+                ),
+                _RouteStatChip(
+                  icon: Icons.place_rounded,
+                  label: '${nodes.length} Nodes',
+                  color: AppColors.accent,
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            // Nodes Timeline Preview
+            if (nodes.isNotEmpty) ...[
+              Text(
+                'Route Waypoints',
+                style: AppTextStyles.labelLarge.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 70,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: nodes.length,
+                  separatorBuilder: (_, __) => const Icon(
+                    Icons.arrow_forward_rounded,
+                    size: 16,
+                    color: AppColors.onSurfaceMuted,
+                  ),
+                  itemBuilder: (ctx, idx) {
+                    final n = nodes[idx];
+                    final isSelectedNode = tappedNode?.id == n.id;
+                    return Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isSelectedNode
+                            ? AppColors.primaryContainer
+                            : AppColors.surfaceVariant,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isSelectedNode
+                              ? AppColors.primary
+                              : AppColors.border,
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                           Text(
-                            '${n.distanceFromStartKm!.toStringAsFixed(1)} km from start',
-                            style: AppTextStyles.caption,
+                            '#${n.nodeOrder} ${n.nodeName}',
+                            style: AppTextStyles.labelSmall.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: isSelectedNode
+                                  ? AppColors.primary
+                                  : AppColors.onSurface,
+                            ),
                           ),
-                      ],
+                          if (n.distanceFromStartKm != null)
+                            Text(
+                              '${n.distanceFromStartKm!.toStringAsFixed(1)} km from start',
+                              style: AppTextStyles.caption,
+                            ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 20),
+
+            // Action Button: Start Navigation / Directions
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                icon: const Icon(Icons.navigation_rounded, size: 20),
+                label: const Text('Open in Google Maps'),
+                onPressed: () {
+                  final dest = nodes.isNotEmpty
+                      ? '${nodes.last.latitude},${nodes.last.longitude}'
+                      : '${AppConfig.kumbhCenterLat},${AppConfig.kumbhCenterLng}';
+                  launchUrl(
+                    Uri.parse(
+                      'https://www.google.com/maps/dir/?api=1&destination=$dest',
                     ),
+                    mode: LaunchMode.externalApplication,
                   );
                 },
               ),
             ),
           ],
-
-          const SizedBox(height: 20),
-
-          // Action Button: Start Navigation / Directions
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              icon: const Icon(Icons.navigation_rounded, size: 20),
-              label: const Text('Open in Google Maps'),
-              onPressed: () {
-                final dest = nodes.isNotEmpty
-                    ? '${nodes.last.latitude},${nodes.last.longitude}'
-                    : '${AppConfig.kumbhCenterLat},${AppConfig.kumbhCenterLng}';
-                launchUrl(
-                  Uri.parse(
-                    'https://www.google.com/maps/dir/?api=1&destination=$dest',
-                  ),
-                  mode: LaunchMode.externalApplication,
-                );
-              },
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

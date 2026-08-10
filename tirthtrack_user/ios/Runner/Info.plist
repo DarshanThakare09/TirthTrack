@@ -68,5 +68,13 @@
 		</array>
 		<key>UIStatusBarHidden</key>
 		<false/>
+		<key>NSLocationWhenInUseUsageDescription</key>
+		<string>Tirth uses your location to display nearby ghats, emergency services, navigation routes, and ensure safety during the Kumbh Mela.</string>
+		<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+		<string>Tirth tracks your location periodically to ensure safety and emergency assistance during the Kumbh Mela.</string>
+		<key>NSCameraUsageDescription</key>
+		<string>Tirth requires camera access to take and upload your profile photo.</string>
+		<key>NSPhotoLibraryUsageDescription</key>
+		<string>Tirth requires photo library access to select and upload your profile photo.</string>
 	</dict>
 </plist>

@@ -19,7 +19,6 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/config/app_config.dart';
-import '../../../../core/services/location_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/distance_utils.dart';
@@ -44,21 +43,11 @@ class _ServicesTabState extends ConsumerState<ServicesTab>
   @override
   bool get wantKeepAlive => true;
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initUserLocation();
-    });
-  }
-
   Future<void> _initUserLocation() async {
-    await ref.read(locationPermissionProvider.notifier).checkAndRequest();
-    await ref.read(locationTrackingProvider.notifier).startTracking();
-
-    final pos = await LocationService.instance.getCurrentPosition();
+    final pos = await ref
+        .read(locationTrackingProvider.notifier)
+        .initializeLocationService();
     if (pos != null && mounted) {
-      ref.read(currentPositionProvider.notifier).state = pos;
       _zoomToPosition(pos);
     }
   }
@@ -68,8 +57,6 @@ class _ServicesTabState extends ConsumerState<ServicesTab>
     final pos = ref.read(currentPositionProvider);
     if (pos != null) {
       _zoomToPosition(pos);
-    } else {
-      _initUserLocation();
     }
   }
 
@@ -85,7 +72,8 @@ class _ServicesTabState extends ConsumerState<ServicesTab>
     }
   }
 
-  void _recenterToUser(Position? position) {
+  void _recenterToUser() {
+    final position = ref.read(currentPositionProvider);
     if (position != null) {
       _zoomToPosition(position);
     } else {
@@ -105,7 +93,6 @@ class _ServicesTabState extends ConsumerState<ServicesTab>
     final servicesState = ref.watch(servicesProvider);
     final filtered = ref.watch(filteredServicesProvider);
     final selectedType = ref.watch(serviceTypeFilterProvider);
-    final position = ref.watch(currentPositionProvider);
     final selectedService = ref.watch(selectedServiceProvider);
 
     ref.listen<Position?>(currentPositionProvider, (previous, next) {
@@ -113,6 +100,16 @@ class _ServicesTabState extends ConsumerState<ServicesTab>
         _zoomToPosition(next);
       }
     });
+
+    final currentPos = ref.read(currentPositionProvider);
+    final initialTarget = selectedService != null
+        ? selectedService.googleLatLng
+        : (currentPos != null
+            ? LatLng(currentPos.latitude, currentPos.longitude)
+            : const LatLng(
+                AppConfig.kumbhCenterLat,
+                AppConfig.kumbhCenterLng,
+              ));
 
     return Scaffold(
       body: Stack(
@@ -127,15 +124,6 @@ class _ServicesTabState extends ConsumerState<ServicesTab>
             data: (allServices) {
               final displayedServices =
                   filtered.isNotEmpty ? filtered : allServices;
-
-              final initialTarget = selectedService != null
-                  ? selectedService.googleLatLng
-                  : (position != null
-                      ? LatLng(position.latitude, position.longitude)
-                      : const LatLng(
-                          AppConfig.kumbhCenterLat,
-                          AppConfig.kumbhCenterLng,
-                        ));
 
               // Convert service items to Google Map markers
               final markers = displayedServices.map((s) {
@@ -165,7 +153,7 @@ class _ServicesTabState extends ConsumerState<ServicesTab>
               return GoogleMap(
                 initialCameraPosition: CameraPosition(
                   target: initialTarget,
-                  zoom: position != null ? 15.5 : 13.5,
+                  zoom: currentPos != null ? 15.5 : 13.5,
                 ),
                 onMapCreated: _onMapCreated,
                 markers: markers,
@@ -177,10 +165,10 @@ class _ServicesTabState extends ConsumerState<ServicesTab>
                 rotateGesturesEnabled: true,
                 tiltGesturesEnabled: true,
                 compassEnabled: true,
-                mapToolbarEnabled: true,
+                mapToolbarEnabled: false,
                 gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
                   Factory<OneSequenceGestureRecognizer>(
-                    () => EagerGestureRecognizer(),
+                    () => ScaleGestureRecognizer(),
                   ),
                 },
                 onTap: (_) {
@@ -347,7 +335,7 @@ class _ServicesTabState extends ConsumerState<ServicesTab>
                     borderRadius: BorderRadius.circular(20),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(20),
-                      onTap: () => _recenterToUser(position),
+                      onTap: _recenterToUser,
                       child: const Padding(
                         padding: EdgeInsets.all(10),
                         child: Icon(Icons.my_location_rounded, size: 22, color: AppColors.primary),
@@ -478,193 +466,198 @@ class _ServiceDetailBottomSheet extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Drag Handle bar
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: AppColors.border,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-
-          // Header with category icon and close button
-          Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
+      child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Drag Handle bar
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
                 decoration: BoxDecoration(
-                  color: service.serviceType.color.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(
-                  service.serviceType.icon,
-                  color: service.serviceType.color,
-                  size: 26,
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      service.serviceName,
-                      style: AppTextStyles.headlineSmall.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      service.serviceType.displayLabel,
-                      style: AppTextStyles.bodySmall.copyWith(
-                        color: service.serviceType.color,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.close_rounded),
-                onPressed: () => Navigator.pop(context),
-              ),
-            ],
-          ),
-
-          if (service.description != null && service.description!.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text(
-              service.description!,
-              style: AppTextStyles.bodyMedium,
             ),
-          ],
 
-          const SizedBox(height: 16),
-
-          // Metadata row (Hours, Distance, 24/7)
-          Wrap(
-            spacing: 10,
-            runSpacing: 8,
-            children: [
-              if (service.is24Hours)
+            // Header with category icon and close button
+            Row(
+              children: [
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  width: 48,
+                  height: 48,
                   decoration: BoxDecoration(
-                    color: AppColors.successContainer,
-                    borderRadius: BorderRadius.circular(8),
+                    color: service.serviceType.color.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Text(
-                    'Open 24/7',
-                    style: AppTextStyles.caption.copyWith(
-                      color: AppColors.success,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  child: Icon(
+                    service.serviceType.icon,
+                    color: service.serviceType.color,
+                    size: 26,
                   ),
                 ),
-              if (service.operatingHours != null)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceVariant,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.access_time_rounded,
-                          size: 13, color: AppColors.onSurfaceMuted),
-                      const SizedBox(width: 4),
                       Text(
-                        service.operatingHours!,
-                        style: AppTextStyles.caption,
-                      ),
-                    ],
-                  ),
-                ),
-              if (service.distanceKm != null)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryContainer,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.straighten_rounded,
-                          size: 13, color: AppColors.primary),
-                      const SizedBox(width: 4),
-                      Text(
-                        DistanceUtils.formatDistance(service.distanceKm!),
-                        style: AppTextStyles.caption.copyWith(
-                          color: AppColors.primary,
+                        service.serviceName,
+                        style: AppTextStyles.headlineSmall.copyWith(
                           fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        service.serviceType.displayLabel,
+                        style: AppTextStyles.bodySmall.copyWith(
+                          color: service.serviceType.color,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
                   ),
                 ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+
+            if (service.description != null && service.description!.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                service.description!,
+                style: AppTextStyles.bodyMedium,
+              ),
             ],
-          ),
 
-          const SizedBox(height: 20),
+            const SizedBox(height: 16),
 
-          // Action Buttons: Call & Directions
-          Row(
-            children: [
-              if (service.contactNumber != null &&
-                  service.contactNumber!.isNotEmpty) ...[
+            // Metadata row (Hours, Distance, 24/7)
+            Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              children: [
+                if (service.is24Hours)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.successContainer,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      'Open 24/7',
+                      style: AppTextStyles.caption.copyWith(
+                        color: AppColors.success,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                if (service.operatingHours != null)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceVariant,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.access_time_rounded,
+                            size: 13, color: AppColors.onSurfaceMuted),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            service.operatingHours!,
+                            style: AppTextStyles.caption,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                if (service.distanceKm != null)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryContainer,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.straighten_rounded,
+                            size: 13, color: AppColors.primary),
+                        const SizedBox(width: 4),
+                        Text(
+                          DistanceUtils.formatDistance(service.distanceKm!),
+                          style: AppTextStyles.caption.copyWith(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+
+            const SizedBox(height: 20),
+
+            // Action Buttons: Call & Directions
+            Row(
+              children: [
+                if (service.contactNumber != null &&
+                    service.contactNumber!.isNotEmpty) ...[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      icon: const Icon(Icons.phone_rounded, size: 18),
+                      label: const Text('Call'),
+                      onPressed: () => launchUrl(
+                        Uri.parse('tel:${service.contactNumber}'),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                ],
                 Expanded(
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    icon: const Icon(Icons.phone_rounded, size: 18),
-                    label: const Text('Call'),
+                    icon: const Icon(Icons.directions_rounded, size: 18),
+                    label: const Text('Directions'),
                     onPressed: () => launchUrl(
-                      Uri.parse('tel:${service.contactNumber}'),
+                      Uri.parse(
+                        'https://www.google.com/maps/dir/?api=1&destination=${service.latitude},${service.longitude}',
+                      ),
+                      mode: LaunchMode.externalApplication,
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
               ],
-              Expanded(
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  icon: const Icon(Icons.directions_rounded, size: 18),
-                  label: const Text('Directions'),
-                  onPressed: () => launchUrl(
-                    Uri.parse(
-                      'https://www.google.com/maps/dir/?api=1&destination=${service.latitude},${service.longitude}',
-                    ),
-                    mode: LaunchMode.externalApplication,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -19,7 +19,6 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/config/app_config.dart';
-import '../../../../core/services/location_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/distance_utils.dart';
@@ -28,8 +27,6 @@ import '../../../../shared/widgets/loading_widget.dart';
 import '../../../location/providers/location_provider.dart';
 import '../../models/police_base_model.dart';
 import '../../providers/maps_providers.dart';
-
-final policeSearchQueryProvider = StateProvider<String>((ref) => '');
 
 class PoliceBaseTab extends ConsumerStatefulWidget {
   const PoliceBaseTab({super.key});
@@ -46,21 +43,11 @@ class _PoliceBaseTabState extends ConsumerState<PoliceBaseTab>
   @override
   bool get wantKeepAlive => true;
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initUserLocation();
-    });
-  }
-
   Future<void> _initUserLocation() async {
-    await ref.read(locationPermissionProvider.notifier).checkAndRequest();
-    await ref.read(locationTrackingProvider.notifier).startTracking();
-
-    final pos = await LocationService.instance.getCurrentPosition();
+    final pos = await ref
+        .read(locationTrackingProvider.notifier)
+        .initializeLocationService();
     if (pos != null && mounted) {
-      ref.read(currentPositionProvider.notifier).state = pos;
       _zoomToPosition(pos);
     }
   }
@@ -70,8 +57,6 @@ class _PoliceBaseTabState extends ConsumerState<PoliceBaseTab>
     final pos = ref.read(currentPositionProvider);
     if (pos != null) {
       _zoomToPosition(pos);
-    } else {
-      _initUserLocation();
     }
   }
 
@@ -87,7 +72,8 @@ class _PoliceBaseTabState extends ConsumerState<PoliceBaseTab>
     }
   }
 
-  void _recenterToUser(Position? position) {
+  void _recenterToUser() {
+    final position = ref.read(currentPositionProvider);
     if (position != null) {
       _zoomToPosition(position);
     } else {
@@ -105,15 +91,23 @@ class _PoliceBaseTabState extends ConsumerState<PoliceBaseTab>
   Widget build(BuildContext context) {
     super.build(context);
     final basesState = ref.watch(policeBasesProvider);
-    final position = ref.watch(currentPositionProvider);
     final selectedBase = ref.watch(selectedPoliceBaseProvider);
-    final searchQuery = ref.watch(policeSearchQueryProvider).toLowerCase().trim();
 
     ref.listen<Position?>(currentPositionProvider, (previous, next) {
       if (next != null && !_hasCenteredOnUser) {
         _zoomToPosition(next);
       }
     });
+
+    final currentPos = ref.read(currentPositionProvider);
+    final initialTarget = selectedBase != null
+        ? selectedBase.googleLatLng
+        : (currentPos != null
+            ? LatLng(currentPos.latitude, currentPos.longitude)
+            : const LatLng(
+                AppConfig.kumbhCenterLat,
+                AppConfig.kumbhCenterLng,
+              ));
 
     return Scaffold(
       body: Stack(
@@ -127,26 +121,7 @@ class _PoliceBaseTabState extends ConsumerState<PoliceBaseTab>
               onRetry: () => ref.refresh(policeBasesProvider),
             ),
             data: (allBases) {
-              final displayedBases = searchQuery.isEmpty
-                  ? allBases
-                  : allBases.where((b) {
-                      return b.baseName.toLowerCase().contains(searchQuery) ||
-                          (b.stationName?.toLowerCase().contains(searchQuery) ??
-                              false) ||
-                          (b.sectorName?.toLowerCase().contains(searchQuery) ??
-                              false);
-                    }).toList();
-
-              final initialTarget = selectedBase != null
-                  ? selectedBase.googleLatLng
-                  : (position != null
-                      ? LatLng(position.latitude, position.longitude)
-                      : const LatLng(
-                          AppConfig.kumbhCenterLat,
-                          AppConfig.kumbhCenterLng,
-                        ));
-
-              final markers = displayedBases.map((b) {
+              final markers = allBases.map((b) {
                 final isSelected = selectedBase?.id == b.id;
                 return Marker(
                   markerId: MarkerId(b.id),
@@ -173,7 +148,7 @@ class _PoliceBaseTabState extends ConsumerState<PoliceBaseTab>
               return GoogleMap(
                 initialCameraPosition: CameraPosition(
                   target: initialTarget,
-                  zoom: position != null ? 15.5 : 13.5,
+                  zoom: currentPos != null ? 15.5 : 13.5,
                 ),
                 onMapCreated: _onMapCreated,
                 markers: markers,
@@ -185,10 +160,10 @@ class _PoliceBaseTabState extends ConsumerState<PoliceBaseTab>
                 rotateGesturesEnabled: true,
                 tiltGesturesEnabled: true,
                 compassEnabled: true,
-                mapToolbarEnabled: true,
+                mapToolbarEnabled: false,
                 gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
                   Factory<OneSequenceGestureRecognizer>(
-                    () => EagerGestureRecognizer(),
+                    () => ScaleGestureRecognizer(),
                   ),
                 },
                 onTap: (_) {
@@ -198,7 +173,7 @@ class _PoliceBaseTabState extends ConsumerState<PoliceBaseTab>
             },
           ),
 
-          // ── Floating Vertical Map Controls ─────────────
+          // ── 2. Floating Vertical Map Controls ─────────────
           Positioned(
             right: 16,
             bottom: 24,
@@ -258,7 +233,7 @@ class _PoliceBaseTabState extends ConsumerState<PoliceBaseTab>
                     borderRadius: BorderRadius.circular(20),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(20),
-                      onTap: () => _recenterToUser(position),
+                      onTap: _recenterToUser,
                       child: const Padding(
                         padding: EdgeInsets.all(10),
                         child: Icon(Icons.my_location_rounded, size: 22, color: AppColors.primary),
@@ -298,166 +273,169 @@ class _PoliceBaseDetailBottomSheet extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Drag handle
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: AppColors.border,
-                borderRadius: BorderRadius.circular(2),
+      child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Drag handle
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
             ),
-          ),
 
-          // Header
-          Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: AppColors.servicePolice.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(14),
+            // Header
+            Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: AppColors.servicePolice.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.local_police_rounded,
+                    color: AppColors.servicePolice,
+                    size: 26,
+                  ),
                 ),
-                child: const Icon(
-                  Icons.local_police_rounded,
-                  color: AppColors.servicePolice,
-                  size: 26,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      base.baseName,
-                      style: AppTextStyles.headlineSmall.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    if (base.stationName != null)
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        base.stationName!,
-                        style: AppTextStyles.bodySmall.copyWith(
-                          color: AppColors.servicePolice,
-                          fontWeight: FontWeight.w600,
+                        base.baseName,
+                        style: AppTextStyles.headlineSmall.copyWith(
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                  ],
+                      if (base.stationName != null)
+                        Text(
+                          base.stationName!,
+                          style: AppTextStyles.bodySmall.copyWith(
+                            color: AppColors.servicePolice,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.close_rounded),
-                onPressed: () => Navigator.pop(context),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 16),
-
-          // Station Metadata & Staff Details
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceVariant,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              children: [
-                if (base.sectorName != null)
-                  _DetailRow(
-                    icon: Icons.map_rounded,
-                    label: 'Sector',
-                    value: base.sectorName!,
-                  ),
-                if (base.inchargeName != null) ...[
-                  const Divider(height: 12),
-                  _DetailRow(
-                    icon: Icons.badge_outlined,
-                    label: 'In-charge Officer',
-                    value: base.inchargeName!,
-                  ),
-                ],
-                if (base.totalStaff > 0) ...[
-                  const Divider(height: 12),
-                  _DetailRow(
-                    icon: Icons.group_outlined,
-                    label: 'Total Staff On Duty',
-                    value: '${base.totalStaff} Personnel',
-                  ),
-                ],
-                if (base.distanceKm != null) ...[
-                  const Divider(height: 12),
-                  _DetailRow(
-                    icon: Icons.straighten_rounded,
-                    label: 'Distance',
-                    value: DistanceUtils.formatDistance(base.distanceKm!),
-                    valueColor: AppColors.primary,
-                  ),
-                ],
+                IconButton(
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: () => Navigator.pop(context),
+                ),
               ],
             ),
-          ),
 
-          const SizedBox(height: 20),
+            const SizedBox(height: 16),
 
-          // Action Buttons: Direct Phone Call & Directions
-          Row(
-            children: [
-              if (base.contactNumber != null &&
-                  base.contactNumber!.isNotEmpty) ...[
+            // Station Metadata & Staff Details
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceVariant,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  if (base.sectorName != null)
+                    _DetailRow(
+                      icon: Icons.map_rounded,
+                      label: 'Sector',
+                      value: base.sectorName!,
+                    ),
+                  if (base.inchargeName != null) ...[
+                    const Divider(height: 12),
+                    _DetailRow(
+                      icon: Icons.badge_outlined,
+                      label: 'In-charge Officer',
+                      value: base.inchargeName!,
+                    ),
+                  ],
+                  if (base.totalStaff > 0) ...[
+                    const Divider(height: 12),
+                    _DetailRow(
+                      icon: Icons.group_outlined,
+                      label: 'Total Staff On Duty',
+                      value: '${base.totalStaff} Personnel',
+                    ),
+                  ],
+                  if (base.distanceKm != null) ...[
+                    const Divider(height: 12),
+                    _DetailRow(
+                      icon: Icons.straighten_rounded,
+                      label: 'Distance',
+                      value: DistanceUtils.formatDistance(base.distanceKm!),
+                      valueColor: AppColors.primary,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // Action Buttons: Direct Phone Call & Directions
+            Row(
+              children: [
+                if (base.contactNumber != null &&
+                    base.contactNumber!.isNotEmpty) ...[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        side: const BorderSide(color: AppColors.servicePolice),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      icon: const Icon(Icons.phone_rounded,
+                          size: 18, color: AppColors.servicePolice),
+                      label: const Text(
+                        'Call Station',
+                        style: TextStyle(color: AppColors.servicePolice),
+                      ),
+                      onPressed: () => launchUrl(
+                        Uri.parse('tel:${base.contactNumber}'),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                ],
                 Expanded(
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      side: const BorderSide(color: AppColors.servicePolice),
+                      backgroundColor: AppColors.servicePolice,
+                      foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    icon: const Icon(Icons.phone_rounded,
-                        size: 18, color: AppColors.servicePolice),
-                    label: const Text(
-                      'Call Station',
-                      style: TextStyle(color: AppColors.servicePolice),
-                    ),
+                    icon: const Icon(Icons.directions_rounded, size: 18),
+                    label: const Text('Directions'),
                     onPressed: () => launchUrl(
-                      Uri.parse('tel:${base.contactNumber}'),
+                      Uri.parse(
+                        'https://www.google.com/maps/dir/?api=1&destination=${base.latitude},${base.longitude}',
+                      ),
+                      mode: LaunchMode.externalApplication,
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
               ],
-              Expanded(
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    backgroundColor: AppColors.servicePolice,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  icon: const Icon(Icons.directions_rounded, size: 18),
-                  label: const Text('Directions'),
-                  onPressed: () => launchUrl(
-                    Uri.parse(
-                      'https://www.google.com/maps/dir/?api=1&destination=${base.latitude},${base.longitude}',
-                    ),
-                    mode: LaunchMode.externalApplication,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -486,12 +464,17 @@ class _DetailRow extends StatelessWidget {
           label,
           style: AppTextStyles.caption.copyWith(color: AppColors.onSurfaceMuted),
         ),
-        const Spacer(),
-        Text(
-          value,
-          style: AppTextStyles.labelMedium.copyWith(
-            fontWeight: FontWeight.bold,
-            color: valueColor ?? AppColors.onSurface,
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            value,
+            textAlign: TextAlign.end,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.labelMedium.copyWith(
+              fontWeight: FontWeight.bold,
+              color: valueColor ?? AppColors.onSurface,
+            ),
           ),
         ),
       ],

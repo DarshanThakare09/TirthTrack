@@ -67,7 +67,7 @@ final servicesProvider =
 class ServicesNotifier extends AsyncNotifier<List<ServiceModel>> {
   @override
   Future<List<ServiceModel>> build() {
-    final position = ref.watch(currentPositionProvider);
+    final position = ref.read(currentPositionProvider);
     return ref.read(serviceRepositoryProvider).fetchActiveServices(
           userLat: position?.latitude,
           userLng: position?.longitude,
@@ -120,7 +120,7 @@ final policeBasesProvider =
 class PoliceBasesNotifier extends AsyncNotifier<List<PoliceBaseModel>> {
   @override
   Future<List<PoliceBaseModel>> build() {
-    final position = ref.watch(currentPositionProvider);
+    final position = ref.read(currentPositionProvider);
     return ref.read(policeBaseRepositoryProvider).fetchActiveBases(
           userLat: position?.latitude,
           userLng: position?.longitude,

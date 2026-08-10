@@ -76,11 +76,11 @@ class RouterNotifier extends AsyncNotifier<void> implements Listenable {
       return null;
     }
 
-    // Complete profile done → Go to Maps (Removed location permission step)
+    // Complete profile done → Go to Location Permission
     if (profile != null &&
         profile.isComplete &&
         path == AppRoutes.completeProfile) {
-      return AppRoutes.maps;
+      return AppRoutes.locationPermission;
     }
 
     return null;

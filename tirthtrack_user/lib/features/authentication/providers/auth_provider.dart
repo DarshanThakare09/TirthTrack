@@ -24,12 +24,14 @@ final authStateProvider = StreamProvider<AuthState>((ref) {
 
 // ── Current user ──────────────────────────────────────────────
 final currentUserProvider = Provider<User?>((ref) {
-  return ref.watch(authStateProvider).valueOrNull?.session?.user;
+  final streamUser = ref.watch(authStateProvider).valueOrNull?.session?.user;
+  return streamUser ?? Supabase.instance.client.auth.currentUser;
 });
 
 // ── Current user ID ───────────────────────────────────────────
 final currentUserIdProvider = Provider<String?>((ref) {
-  return ref.watch(currentUserProvider)?.id;
+  return ref.watch(currentUserProvider)?.id ??
+      Supabase.instance.client.auth.currentUser?.id;
 });
 
 // ── Phone login state ─────────────────────────────────────────

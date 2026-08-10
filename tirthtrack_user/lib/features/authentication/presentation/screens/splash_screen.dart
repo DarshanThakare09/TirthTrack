@@ -7,9 +7,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/services/location_service.dart';
 import '../../../../features/authentication/providers/auth_provider.dart';
+import '../../../../features/location/providers/location_provider.dart';
 import '../../../../features/profile/providers/profile_provider.dart';
 import '../../../../router/app_router.dart';
+import '../../../../shared/screens/no_internet_screen.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -23,6 +26,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
+  bool _hasNetworkError = false;
+  bool _isRetrying = false;
 
   @override
   void initState() {
@@ -45,50 +50,84 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   void _startAnimationAndTimer() {
     _animationController.forward(from: 0.0); // Always forces animation to start from 0
 
-    Future.delayed(const Duration(milliseconds: 2500), () async {
+    Future.delayed(const Duration(milliseconds: 2000), () async {
+      _checkAuthAndProfile();
+    });
+  }
+
+  Future<void> _checkAuthAndProfile() async {
+    if (!mounted) return;
+
+    // Check session - mandatory login check
+    final user = ref.read(currentUserProvider);
+
+    if (user == null) {
+      if (mounted) context.go(AppRoutes.phoneLogin);
+      return;
+    }
+
+    // Require Database Profile Confirmation
+    try {
+      final profile = await ref.read(profileProvider.future);
       if (!mounted) return;
 
-      // Check session
-      final user = ref.read(currentUserProvider);
+      setState(() {
+        _hasNetworkError = false;
+        _isRetrying = false;
+      });
 
-      if (user == null) {
-        if (mounted) context.go(AppRoutes.phoneLogin);
-        return;
-      }
-
-      // Load profile to check completeness
-      try {
-        final profile = await ref.read(profileProvider.future);
-        if (!mounted) return;
-
-        if (!profile.isComplete) {
-          context.go(AppRoutes.completeProfile);
+      if (!profile.isComplete) {
+        context.go(AppRoutes.completeProfile);
+      } else {
+        final locationAvailable = await LocationService.instance.isAvailable;
+        if (!locationAvailable) {
+          if (mounted) context.go(AppRoutes.locationPermission);
         } else {
-          context.go(AppRoutes.maps);
+          ref.read(locationTrackingProvider.notifier).startTracking();
+          if (mounted) context.go(AppRoutes.maps);
         }
-      } catch (_) {
-        if (mounted) context.go(AppRoutes.maps);
       }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _hasNetworkError = true;
+        _isRetrying = false;
+      });
+    }
+  }
+
+  void _onRetry() {
+    setState(() {
+      _isRetrying = true;
     });
+    ref.invalidate(profileProvider);
+    _checkAuthAndProfile();
   }
 
   // This function triggers every time the app is minimized or re-opened
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _startAnimationAndTimer(); // Re-runs the animation when you open the app again
+    if (state == AppLifecycleState.resumed && !_hasNetworkError) {
+      _startAnimationAndTimer();
     }
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this); // Clean up the observer
+    WidgetsBinding.instance.removeObserver(this);
     _animationController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_hasNetworkError) {
+      return NoInternetScreen(
+        onRetry: _onRetry,
+        isRetrying: _isRetrying,
+      );
+    }
+
     const Color brandColor = Color(0xffFF7722);
 
     return Scaffold(

@@ -433,11 +433,15 @@ class _ChatBubble extends StatelessWidget {
                                       size: 12,
                                       color: AppColors.primary),
                                   const SizedBox(width: 4),
-                                  Text(
-                                    label,
-                                    style: AppTextStyles.caption.copyWith(
-                                      color: AppColors.primary,
-                                      fontWeight: FontWeight.w500,
+                                  Flexible(
+                                    child: Text(
+                                      label,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: AppTextStyles.caption.copyWith(
+                                        color: AppColors.primary,
+                                        fontWeight: FontWeight.w500,
+                                      ),
                                     ),
                                   ),
                                 ],

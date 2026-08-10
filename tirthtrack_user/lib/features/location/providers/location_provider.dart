@@ -28,13 +28,36 @@ class LocationPermissionNotifier
     extends StateNotifier<LocationPermissionStatus> {
   LocationPermissionNotifier() : super(LocationPermissionStatus.unknown);
 
+  Future<void>? _inFlightRequest;
+
+  Future<void> checkPermissionOnly() async {
+    final service = LocationService.instance;
+    final perm = await service.checkPermission();
+    _updateStatus(perm);
+  }
+
   Future<void> checkAndRequest() async {
+    if (_inFlightRequest != null) {
+      return _inFlightRequest;
+    }
+    _inFlightRequest = _performCheckAndRequest();
+    try {
+      await _inFlightRequest;
+    } finally {
+      _inFlightRequest = null;
+    }
+  }
+
+  Future<void> _performCheckAndRequest() async {
     final service = LocationService.instance;
     var perm = await service.checkPermission();
     if (perm == LocationPermission.denied) {
       perm = await service.requestPermission();
     }
+    _updateStatus(perm);
+  }
 
+  void _updateStatus(LocationPermission perm) {
     if (perm == LocationPermission.always ||
         perm == LocationPermission.whileInUse) {
       state = LocationPermissionStatus.granted;
@@ -47,6 +70,10 @@ class LocationPermissionNotifier
 
   Future<void> openSettings() async {
     await openAppSettings();
+  }
+
+  Future<void> openLocationSettings() async {
+    await LocationService.instance.openLocationSettings();
   }
 }
 
@@ -65,29 +92,100 @@ class LocationTrackingNotifier extends StateNotifier<bool> {
   final Ref _ref;
   final Battery _battery = Battery();
   StreamSubscription<Position>? _subscription;
+  Timer? _periodicTimer;
+  Future<Position?>? _inFlightInit;
+  bool _isStarting = false;
+
+  /// Single unified entry point to request permission, start 5s location tracking,
+  /// and return current position for map centering.
+  Future<Position?> initializeLocationService() async {
+    if (_inFlightInit != null) {
+      return _inFlightInit;
+    }
+    _inFlightInit = _performInitialize();
+    try {
+      return await _inFlightInit;
+    } finally {
+      _inFlightInit = null;
+    }
+  }
+
+  Future<Position?> _performInitialize() async {
+    await _ref.read(locationPermissionProvider.notifier).checkAndRequest();
+    final status = _ref.read(locationPermissionProvider);
+
+    if (status != LocationPermissionStatus.granted) {
+      return null;
+    }
+
+    await startTracking();
+    final pos = _ref.read(currentPositionProvider) ??
+        await LocationService.instance.getCurrentPosition();
+
+    if (pos != null) {
+      _ref.read(currentPositionProvider.notifier).state = pos;
+    }
+
+    return pos;
+  }
 
   Future<void> startTracking() async {
-    if (state) return; // already tracking
-    final available = await LocationService.instance.isAvailable;
-    if (!available) return;
+    if (state || _isStarting) return; // already tracking or starting
+    _isStarting = true;
+    try {
+      final available = await LocationService.instance.isAvailable;
+      if (!available) {
+        appLogger.w('LocationTracking: location service or permission not available.');
+        return;
+      }
 
-    state = true;
-    appLogger.d('LocationTracking: started');
+      state = true;
+      appLogger.d('LocationTracking: started 5s tracking to Supabase');
 
-    _subscription = LocationService.instance.getPositionStream().listen(
-      (position) async {
-        _ref.read(currentPositionProvider.notifier).state = position;
-        await _persistLocation(position);
-      },
-      onError: (e) {
-        appLogger.e('LocationTracking stream error: $e');
-      },
-    );
+      // 1. Initial position fetch & persist immediately
+      final initialPos = await LocationService.instance.getCurrentPosition();
+      if (initialPos != null) {
+        _ref.read(currentPositionProvider.notifier).state = initialPos;
+        await _persistLocation(initialPos);
+      }
+
+      // Cancel existing if any
+      await _subscription?.cancel();
+      _periodicTimer?.cancel();
+
+      // 2. Position stream to receive real-time location changes
+      _subscription = LocationService.instance.getPositionStream().listen(
+        (position) async {
+          _ref.read(currentPositionProvider.notifier).state = position;
+        },
+        onError: (e) {
+          appLogger.e('LocationTracking stream error: $e');
+        },
+      );
+
+      // 3. Periodic timer to fetch and store location data on Supabase every 5 seconds
+      _periodicTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+        try {
+          var pos = await LocationService.instance.getCurrentPosition();
+          pos ??= _ref.read(currentPositionProvider);
+          if (pos != null) {
+            _ref.read(currentPositionProvider.notifier).state = pos;
+            await _persistLocation(pos);
+          }
+        } catch (e) {
+          appLogger.e('LocationTracking periodic update error: $e');
+        }
+      });
+    } finally {
+      _isStarting = false;
+    }
   }
 
   Future<void> stopTracking() async {
     await _subscription?.cancel();
+    _periodicTimer?.cancel();
     _subscription = null;
+    _periodicTimer = null;
     state = false;
     appLogger.d('LocationTracking: stopped');
   }
@@ -121,6 +219,7 @@ class LocationTrackingNotifier extends StateNotifier<bool> {
   @override
   void dispose() {
     _subscription?.cancel();
+    _periodicTimer?.cancel();
     super.dispose();
   }
 }

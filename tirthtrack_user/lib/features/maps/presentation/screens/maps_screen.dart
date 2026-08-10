@@ -3,15 +3,29 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../location/providers/location_provider.dart';
 import '../tabs/police_base_tab.dart';
 import '../tabs/routes_tab.dart';
 import '../tabs/services_tab.dart';
 
-class MapsScreen extends ConsumerWidget {
+class MapsScreen extends ConsumerStatefulWidget {
   const MapsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MapsScreen> createState() => _MapsScreenState();
+}
+
+class _MapsScreenState extends ConsumerState<MapsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(locationTrackingProvider.notifier).initializeLocationService();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
@@ -73,11 +87,17 @@ class MapsScreen extends ConsumerWidget {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(Icons.alt_route_rounded, size: 16),
-                              SizedBox(width: 6),
-                              Text('Routes',
+                              SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  'Routes',
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
                                   style: TextStyle(
                                       fontSize: 13,
-                                      fontWeight: FontWeight.w700)),
+                                      fontWeight: FontWeight.w700),
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -86,11 +106,17 @@ class MapsScreen extends ConsumerWidget {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(Icons.grid_view_rounded, size: 16),
-                              SizedBox(width: 6),
-                              Text('Services',
+                              SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  'Services',
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
                                   style: TextStyle(
                                       fontSize: 13,
-                                      fontWeight: FontWeight.w700)),
+                                      fontWeight: FontWeight.w700),
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -99,11 +125,17 @@ class MapsScreen extends ConsumerWidget {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(Icons.security_rounded, size: 16),
-                              SizedBox(width: 6),
-                              Text('Police',
+                              SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  'Police',
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
                                   style: TextStyle(
                                       fontSize: 13,
-                                      fontWeight: FontWeight.w700)),
+                                      fontWeight: FontWeight.w700),
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -116,6 +148,7 @@ class MapsScreen extends ConsumerWidget {
           ),
         ),
         body: const TabBarView(
+          physics: NeverScrollableScrollPhysics(),
           children: [
             RoutesTab(),
             ServicesTab(),

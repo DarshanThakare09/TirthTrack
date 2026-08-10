@@ -115,13 +115,17 @@ class ProfileScreen extends ConsumerWidget {
                           const Icon(Icons.location_on_rounded,
                               size: 14, color: AppColors.primary),
                           const SizedBox(width: 6),
-                          Text(
-                            [profile.city, profile.state]
-                                .where((v) => v != null)
-                                .join(', '),
-                            style: AppTextStyles.bodySmall.copyWith(
-                              color: AppColors.primary,
-                              fontWeight: FontWeight.w700,
+                          Flexible(
+                            child: Text(
+                              [profile.city, profile.state]
+                                  .where((v) => v != null)
+                                  .join(', '),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTextStyles.bodySmall.copyWith(
+                                color: AppColors.primary,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
                         ],

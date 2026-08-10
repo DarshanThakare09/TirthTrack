@@ -109,7 +109,7 @@ class _CompleteProfileScreenState
     final profileState = ref.read(profileProvider);
 
     profileState.when(
-      data: (_) => context.go(AppRoutes.maps),
+      data: (_) => context.go(AppRoutes.locationPermission),
       error: (e, _) {
         final msg = e is AppException ? e.message : 'Failed to save profile.';
         ScaffoldMessenger.of(context)

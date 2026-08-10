@@ -4,6 +4,7 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../utils/logger.dart';
@@ -23,7 +24,7 @@ class LocationService {
 
   Future<bool> isServiceEnabled() => Geolocator.isLocationServiceEnabled();
 
-  /// Returns true if location is fully available.
+  /// Returns true if location is fully available (service enabled + permission granted).
   Future<bool> get isAvailable async {
     final serviceEnabled = await isServiceEnabled();
     if (!serviceEnabled) return false;
@@ -37,15 +38,12 @@ class LocationService {
   // ── Get current position ──────────────────────────────────
   Future<Position?> getCurrentPosition() async {
     try {
-      bool serviceEnabled = await isServiceEnabled();
+      final serviceEnabled = await isServiceEnabled();
       if (!serviceEnabled) {
-        await openLocationSettings();
+        return await Geolocator.getLastKnownPosition();
       }
 
-      var perm = await checkPermission();
-      if (perm == LocationPermission.denied) {
-        perm = await requestPermission();
-      }
+      final perm = await checkPermission();
       if (perm == LocationPermission.denied ||
           perm == LocationPermission.deniedForever) {
         return await Geolocator.getLastKnownPosition();
@@ -69,18 +67,37 @@ class LocationService {
 
   // ── Position stream ───────────────────────────────────────
   Stream<Position> getPositionStream() {
-    return Geolocator.getPositionStream(
-      locationSettings: AndroidSettings(
+    LocationSettings locationSettings;
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      locationSettings = AndroidSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 20, // meters
-        intervalDuration: const Duration(seconds: 30),
+        distanceFilter: 0, // 0 meters for precise updates
+        intervalDuration: const Duration(seconds: 5), // 5 seconds
         foregroundNotificationConfig: const ForegroundNotificationConfig(
           notificationText:
               'Tirth is tracking your location for safety.',
           notificationTitle: 'Tirth Active',
           enableWakeLock: true,
         ),
-      ),
+      );
+    } else if (defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS) {
+      locationSettings = AppleSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 0,
+        activityType: ActivityType.fitness,
+        pauseLocationUpdatesAutomatically: false,
+        showBackgroundLocationIndicator: true,
+      );
+    } else {
+      locationSettings = const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 0,
+      );
+    }
+
+    return Geolocator.getPositionStream(
+      locationSettings: locationSettings,
     );
   }
 }

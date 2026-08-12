@@ -1,19 +1,68 @@
 name: tirth_admin
-description: "A new Flutter project."
+description: "TirthTrack Admin Application for Kumbh Mela management."
 publish_to: 'none'
-version: 0.1.0+1
+version: 1.0.0+1
 
 environment:
-  sdk: ^3.11.0
+  sdk: ^3.5.0
 
 dependencies:
   flutter:
     sdk: flutter
 
+  # Supabase
+  supabase_flutter: ^2.8.4
+
+  # State Management
+  flutter_riverpod: ^2.6.1
+
+  # Navigation
+  go_router: ^14.8.1
+
+  # Maps
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+
+  # UI & Styling
+  cached_network_image: ^3.4.1
+  google_fonts: ^6.2.1
+  flutter_svg: ^2.0.17
+
+  # Utilities
+  intl: ^0.19.0
+  logger: ^2.5.0
+  shared_preferences: ^2.3.3
+  uuid: ^4.5.1
+  flutter_dotenv: ^5.2.1
+  equatable: ^2.0.7
+  url_launcher: ^6.3.1
+
+  # Launcher Icons & Splash
+  flutter_launcher_icons: ^0.14.4
+  flutter_native_splash: ^2.4.7
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^6.0.0
+  flutter_lints: ^5.0.0
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/image/app_icon.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/image/app_icon.png"
+
+flutter_native_splash:
+  color: "#FFFFFF"
+  image: assets/image/app_icon.png
+  android_12:
+    color: "#FFFFFF"
+    image: assets/image/app_icon.png
 
 flutter:
   uses-material-design: true
+  assets:
+    - .env
+    - assets/image/
+    - assets/icons/

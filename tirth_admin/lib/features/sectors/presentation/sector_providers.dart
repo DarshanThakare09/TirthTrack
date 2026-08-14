@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:latlong2/latlong.dart';
 import '../../../models/sector_model.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../data/sector_repository.dart';
@@ -14,6 +15,12 @@ final sectorListProvider = FutureProvider<List<SectorModel>>((ref) async {
   final repo = ref.watch(sectorRepositoryProvider);
   final query = ref.watch(sectorSearchQueryProvider);
   return await repo.getSectors(searchQuery: query);
+});
+
+final sectorsWithNodesProvider = FutureProvider<List<SectorModel>>((ref) async {
+  final repo = ref.watch(sectorRepositoryProvider);
+  final query = ref.watch(sectorSearchQueryProvider);
+  return await repo.getSectorsWithNodes(searchQuery: query);
 });
 
 final sectorDetailProvider =
@@ -35,6 +42,23 @@ class SectorActionController extends StateNotifier<AsyncValue<void>> {
   final SectorRepository _repo;
   final Ref _ref;
 
+  Future<bool> createSectorWithNodes({
+    required SectorModel sector,
+    required List<LatLng> nodes,
+  }) async {
+    state = const AsyncValue.loading();
+    try {
+      await _repo.createSectorWithNodes(sector: sector, nodes: nodes);
+      _ref.invalidate(sectorListProvider);
+      _ref.invalidate(sectorsWithNodesProvider);
+      state = const AsyncValue.data(null);
+      return true;
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+      return false;
+    }
+  }
+
   Future<bool> saveSector({
     String? id,
     required SectorModel sector,
@@ -47,6 +71,7 @@ class SectorActionController extends StateNotifier<AsyncValue<void>> {
         await _repo.updateSector(id, sector);
       }
       _ref.invalidate(sectorListProvider);
+      _ref.invalidate(sectorsWithNodesProvider);
       if (id != null) _ref.invalidate(sectorDetailProvider(id));
       state = const AsyncValue.data(null);
       return true;
@@ -61,6 +86,7 @@ class SectorActionController extends StateNotifier<AsyncValue<void>> {
     try {
       await _repo.deleteSector(id);
       _ref.invalidate(sectorListProvider);
+      _ref.invalidate(sectorsWithNodesProvider);
       state = const AsyncValue.data(null);
       return true;
     } catch (e, st) {
@@ -75,6 +101,7 @@ class SectorActionController extends StateNotifier<AsyncValue<void>> {
       _ref.invalidate(sectorNodesProvider(node.sectorId));
       _ref.invalidate(sectorDetailProvider(node.sectorId));
       _ref.invalidate(sectorListProvider);
+      _ref.invalidate(sectorsWithNodesProvider);
       return true;
     } catch (e, st) {
       state = AsyncValue.error(e, st);
@@ -86,6 +113,8 @@ class SectorActionController extends StateNotifier<AsyncValue<void>> {
     try {
       await _repo.updateSectorNode(nodeId, node);
       _ref.invalidate(sectorNodesProvider(node.sectorId));
+      _ref.invalidate(sectorDetailProvider(node.sectorId));
+      _ref.invalidate(sectorsWithNodesProvider);
       return true;
     } catch (e, st) {
       state = AsyncValue.error(e, st);
@@ -99,6 +128,7 @@ class SectorActionController extends StateNotifier<AsyncValue<void>> {
       _ref.invalidate(sectorNodesProvider(sectorId));
       _ref.invalidate(sectorDetailProvider(sectorId));
       _ref.invalidate(sectorListProvider);
+      _ref.invalidate(sectorsWithNodesProvider);
       return true;
     } catch (e, st) {
       state = AsyncValue.error(e, st);
@@ -113,6 +143,8 @@ class SectorActionController extends StateNotifier<AsyncValue<void>> {
     try {
       await _repo.reorderSectorNodes(sectorId, reorderedNodes);
       _ref.invalidate(sectorNodesProvider(sectorId));
+      _ref.invalidate(sectorDetailProvider(sectorId));
+      _ref.invalidate(sectorsWithNodesProvider);
       return true;
     } catch (e, st) {
       state = AsyncValue.error(e, st);

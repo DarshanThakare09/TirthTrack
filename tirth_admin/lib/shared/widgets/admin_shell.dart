@@ -30,7 +30,7 @@ class AdminShell extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Image.asset(
-                'assets/icons/app_icon.png',
+                'assets/image/app_icon.png',
                 width: 22,
                 height: 22,
                 errorBuilder: (_, __, ___) => const Icon(
@@ -67,7 +67,7 @@ class AdminShell extends ConsumerWidget {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.notifications_none_rounded),
+            icon: const Icon(Icons.campaign_outlined),
             tooltip: 'Alerts & Broadcasts',
             onPressed: () => context.go('/alerts'),
           ),
@@ -170,11 +170,11 @@ class AdminShell extends ConsumerWidget {
                 child: ListView(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   children: [
-                    _DrawerSectionHeader(title: 'MAIN MONITORING'),
+                    const _DrawerSectionHeader(title: 'MAIN MONITORING'),
                     _DrawerItem(
                       icon: Icons.dashboard_rounded,
                       title: 'Dashboard Overview',
-                      subtitle: 'Live statistics & quick actions',
+                      subtitle: 'Live statistics & quick metrics',
                       isSelected: location.startsWith('/dashboard'),
                       onTap: () {
                         Navigator.pop(context);
@@ -182,30 +182,39 @@ class AdminShell extends ConsumerWidget {
                       },
                     ),
 
-                    _DrawerSectionHeader(title: 'SECURITY & POLICE'),
+                    const _DrawerSectionHeader(title: 'FACILITIES & SERVICES'),
                     _DrawerItem(
-                      icon: Icons.local_police_rounded,
-                      title: 'Police Officers',
-                      subtitle: 'Verification & badge management',
-                      isSelected: location.startsWith('/police') &&
-                          !location.startsWith('/police-bases'),
+                      icon: Icons.medical_services_rounded,
+                      title: 'Services & Facilities',
+                      subtitle: 'Toilets, water, medical, parking, food',
+                      isSelected: location.startsWith('/services'),
                       onTap: () {
                         Navigator.pop(context);
-                        context.go('/police');
+                        context.go('/services');
                       },
                     ),
                     _DrawerItem(
-                      icon: Icons.shield_rounded,
-                      title: 'Police Bases',
-                      subtitle: 'Stations, outposts & staffing',
-                      isSelected: location.startsWith('/police-bases'),
+                      icon: Icons.campaign_rounded,
+                      title: 'Alerts & Broadcasts',
+                      subtitle: 'Emergency bulletins & announcements',
+                      isSelected: location.startsWith('/alerts'),
                       onTap: () {
                         Navigator.pop(context);
-                        context.go('/police-bases');
+                        context.go('/alerts');
                       },
                     ),
 
-                    _DrawerSectionHeader(title: 'NAVIGATION & SECTORS'),
+                    const _DrawerSectionHeader(title: 'SECTORS & NAVIGATION'),
+                    _DrawerItem(
+                      icon: Icons.map_rounded,
+                      title: 'Sector Allocation',
+                      subtitle: 'Zonal boundary polygons & allocation',
+                      isSelected: location.startsWith('/sectors'),
+                      onTap: () {
+                        Navigator.pop(context);
+                        context.go('/sectors');
+                      },
+                    ),
                     _DrawerItem(
                       icon: Icons.alt_route_rounded,
                       title: 'Pilgrim Routes',
@@ -216,45 +225,47 @@ class AdminShell extends ConsumerWidget {
                         context.go('/routes');
                       },
                     ),
-                    _DrawerItem(
-                      icon: Icons.map_rounded,
-                      title: 'Sectors & Boundaries',
-                      subtitle: 'Zonal polygons & coordinates',
-                      isSelected: location.startsWith('/sectors'),
-                      onTap: () {
-                        Navigator.pop(context);
-                        context.go('/sectors');
-                      },
-                    ),
 
-                    _DrawerSectionHeader(title: 'FACILITIES & ALERTS'),
+                    const _DrawerSectionHeader(title: 'SECURITY & POLICE'),
                     _DrawerItem(
-                      icon: Icons.medical_services_rounded,
-                      title: 'Services & Facilities',
-                      subtitle: 'Medical, water, parking, toilets',
-                      isSelected: location.startsWith('/services'),
+                      icon: Icons.shield_rounded,
+                      title: 'Police Bases',
+                      subtitle: 'Stations, security outposts & staffing',
+                      isSelected: location.startsWith('/police-bases'),
                       onTap: () {
                         Navigator.pop(context);
-                        context.go('/services');
+                        context.go('/police-bases');
                       },
                     ),
                     _DrawerItem(
-                      icon: Icons.campaign_rounded,
-                      title: 'Alerts & Broadcasts',
-                      subtitle: 'Emergency bulletins & updates',
-                      isSelected: location.startsWith('/alerts'),
+                      icon: Icons.key_rounded,
+                      title: 'Police Login Codes',
+                      subtitle: 'Generate & revoke 6-digit access codes',
+                      isSelected: location.startsWith('/police-codes'),
                       onTap: () {
                         Navigator.pop(context);
-                        context.go('/alerts');
+                        context.go('/police-codes');
+                      },
+                    ),
+                    _DrawerItem(
+                      icon: Icons.local_police_rounded,
+                      title: 'Police Officers',
+                      subtitle: 'Verification & badge management',
+                      isSelected: location.startsWith('/police') &&
+                          !location.startsWith('/police-bases') &&
+                          !location.startsWith('/police-codes'),
+                      onTap: () {
+                        Navigator.pop(context);
+                        context.go('/police');
                       },
                     ),
 
                     const Divider(height: 24, indent: 16, endIndent: 16),
-                    _DrawerSectionHeader(title: 'ACCOUNT'),
+                    const _DrawerSectionHeader(title: 'ACCOUNT'),
                     _DrawerItem(
                       icon: Icons.person_rounded,
                       title: 'Administrator Profile',
-                      subtitle: 'Account details & permissions',
+                      subtitle: 'Account details & credentials',
                       isSelected: location.startsWith('/profile'),
                       onTap: () {
                         Navigator.pop(context);

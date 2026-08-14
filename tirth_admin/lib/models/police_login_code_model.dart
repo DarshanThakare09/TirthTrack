@@ -34,6 +34,9 @@ class PoliceLoginCodeModel extends Equatable {
     this.usedAt,
     this.createdBy,
     required this.createdAt,
+    this.officerName,
+    this.badgeNumber,
+    this.policeStation,
   });
 
   final String id;
@@ -44,6 +47,9 @@ class PoliceLoginCodeModel extends Equatable {
   final DateTime? usedAt;
   final String? createdBy;
   final DateTime createdAt;
+  final String? officerName;
+  final String? badgeNumber;
+  final String? policeStation;
 
   bool get isExpiredByDate => expiresAt.isBefore(DateTime.now());
 
@@ -58,21 +64,38 @@ class PoliceLoginCodeModel extends Equatable {
   }
 
   factory PoliceLoginCodeModel.fromJson(Map<String, dynamic> json) {
+    String? officerName;
+    String? badgeNumber;
+    String? policeStation;
+
+    final policeDetails = json['police_details'] as Map<String, dynamic>?;
+    if (policeDetails != null) {
+      badgeNumber = policeDetails['badge_number'] as String?;
+      policeStation = policeDetails['police_station'] as String?;
+      final profile = policeDetails['profiles'] as Map<String, dynamic>?;
+      if (profile != null) {
+        officerName = profile['full_name'] as String?;
+      }
+    }
+
     return PoliceLoginCodeModel(
       id: json['id'] as String,
       policeId: json['police_id'] as String,
       loginCode: json['login_code'] as String,
-      expiresAt: DateTime.parse(json['expires_at'] as String),
+      expiresAt: DateTime.parse(json['expires_at'] as String).toLocal(),
       status: loginCodeStatusFromDb(json['status'] as String?),
       usedAt: json['used_at'] != null
-          ? DateTime.tryParse(json['used_at'] as String)
+          ? DateTime.tryParse(json['used_at'] as String)?.toLocal()
           : null,
       createdBy: json['created_by'] as String?,
-      createdAt: DateTime.parse(json['created_at'] as String),
+      createdAt: DateTime.parse(json['created_at'] as String).toLocal(),
+      officerName: officerName,
+      badgeNumber: badgeNumber,
+      policeStation: policeStation,
     );
   }
 
   @override
   List<Object?> get props =>
-      [id, policeId, loginCode, expiresAt, status, usedAt];
+      [id, policeId, loginCode, expiresAt, status, usedAt, officerName, badgeNumber];
 }

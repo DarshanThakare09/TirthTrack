@@ -14,9 +14,13 @@ class ServiceFormScreen extends ConsumerStatefulWidget {
   const ServiceFormScreen({
     super.key,
     this.serviceId,
+    this.initialLat,
+    this.initialLng,
   });
 
   final String? serviceId;
+  final double? initialLat;
+  final double? initialLng;
 
   @override
   ConsumerState<ServiceFormScreen> createState() => _ServiceFormScreenState();
@@ -35,6 +39,17 @@ class _ServiceFormScreenState extends ConsumerState<ServiceFormScreen> {
   bool _is24Hours = false;
   bool _isActive = true;
   bool _isInitialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialLat != null) {
+      _latController.text = widget.initialLat!.toStringAsFixed(6);
+    }
+    if (widget.initialLng != null) {
+      _lngController.text = widget.initialLng!.toStringAsFixed(6);
+    }
+  }
 
   @override
   void dispose() {
@@ -70,18 +85,56 @@ class _ServiceFormScreenState extends ConsumerState<ServiceFormScreen> {
         ? LatLng(currentLat, currentLng)
         : null;
 
-    final picked = await LocationPickerDialog.show(
+    final result = await LocationPickerDialog.showResult(
       context,
       initialLocation: initialPos,
-      title: 'Pick Facility Location',
+      title: 'Pick Facility Location on Map',
     );
 
-    if (picked != null) {
+    if (result != null) {
       setState(() {
-        _latController.text = picked.latitude.toStringAsFixed(6);
-        _lngController.text = picked.longitude.toStringAsFixed(6);
+        _latController.text = result.latitude.toStringAsFixed(6);
+        _lngController.text = result.longitude.toStringAsFixed(6);
+        if (result.address != null && result.address!.isNotEmpty) {
+          if (_descController.text.trim().isEmpty) {
+            _descController.text = result.address!;
+          }
+        }
       });
+      if (mounted && result.address != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('📍 Location updated: ${result.address}'),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
+  }
+
+  Future<void> _pickOperatingHoursClock() async {
+    final start = await showTimePicker(
+      context: context,
+      initialTime: const TimeOfDay(hour: 6, minute: 0),
+      helpText: 'Select Opening Time',
+    );
+    if (start == null || !mounted) return;
+
+    final end = await showTimePicker(
+      context: context,
+      initialTime: const TimeOfDay(hour: 22, minute: 0),
+      helpText: 'Select Closing Time',
+    );
+    if (end == null || !mounted) return;
+
+    final startStr = start.format(context);
+    final endStr = end.format(context);
+
+    setState(() {
+      _is24Hours = false;
+      _hoursController.text = '$startStr – $endStr';
+    });
   }
 
   Future<void> _handleSave() async {
@@ -105,9 +158,11 @@ class _ServiceFormScreenState extends ConsumerState<ServiceFormScreen> {
       contactNumber: _contactNumberController.text.trim().isNotEmpty
           ? _contactNumberController.text.trim()
           : null,
-      operatingHours: _hoursController.text.trim().isNotEmpty
-          ? _hoursController.text.trim()
-          : null,
+      operatingHours: _is24Hours
+          ? '24 Hours'
+          : (_hoursController.text.trim().isNotEmpty
+              ? _hoursController.text.trim()
+              : null),
       is24Hours: _is24Hours,
       isActive: _isActive,
       createdAt: DateTime.now(),
@@ -118,15 +173,17 @@ class _ServiceFormScreenState extends ConsumerState<ServiceFormScreen> {
         .read(serviceActionControllerProvider.notifier)
         .saveService(id: widget.serviceId, service: service);
 
-    if (success && mounted) {
+    if (mounted && success) {
+      ref.invalidate(serviceListProvider);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          backgroundColor: AppColors.success,
           content: Text(
-            widget.serviceId == null
-                ? 'Facility added successfully.'
-                : 'Facility details updated.',
+            widget.serviceId != null
+                ? 'Facility updated successfully'
+                : 'New facility registered successfully',
           ),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
         ),
       );
       context.pop();
@@ -139,257 +196,321 @@ class _ServiceFormScreenState extends ConsumerState<ServiceFormScreen> {
     final actionState = ref.watch(serviceActionControllerProvider);
 
     if (isEditing) {
-      final serviceAsync = ref.watch(serviceDetailProvider(widget.serviceId!));
-      return serviceAsync.when(
-        loading: () => Scaffold(
-          appBar: AppBar(title: const Text('Edit Facility')),
-          body: const LoadingWidget(message: 'Loading facility details...'),
+      final detailAsync = ref.watch(serviceDetailProvider(widget.serviceId!));
+      return detailAsync.when(
+        loading: () => const Scaffold(
+          body: LoadingWidget(label: 'Loading facility details...'),
         ),
         error: (err, _) => Scaffold(
           appBar: AppBar(title: const Text('Edit Facility')),
-          body: ErrorStateWidget(message: err.toString()),
+          body: ErrorStateWidget(
+            message: err.toString(),
+            onRetry: () => ref.refresh(serviceDetailProvider(widget.serviceId!)),
+          ),
         ),
         data: (service) {
           _populateData(service);
-          return _buildForm(isEditing: true, isLoading: actionState.isLoading);
+          return _buildScaffold(context, isEditing, actionState);
         },
       );
     }
 
-    return _buildForm(isEditing: false, isLoading: actionState.isLoading);
+    return _buildScaffold(context, isEditing, actionState);
   }
 
-  Widget _buildForm({required bool isEditing, required bool isLoading}) {
+  Widget _buildScaffold(
+    BuildContext context,
+    bool isEditing,
+    AsyncValue<void> actionState,
+  ) {
+    final isSaving = actionState.isLoading;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Text(isEditing ? 'Edit Facility' : 'Add Facility / Service'),
+        title: Text(isEditing ? 'Edit Facility' : 'Register New Facility'),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Facility Information',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.onBackground,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-
-                      // Facility Name
-                      AppTextField(
-                        controller: _nameController,
-                        label: 'Facility / Service Name',
-                        hint: 'e.g. Civil Hospital Emergency Post #4',
-                        prefixIcon: Icons.business_rounded,
-                        isRequired: true,
-                        validator: (val) {
-                          if (val == null || val.trim().isEmpty) {
-                            return 'Facility name is required';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Service Type Dropdown
-                      const Text(
-                        'Service Category *',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.onSurface,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      DropdownButtonFormField<ServiceTypeEnum>(
-                        initialValue: _selectedType,
-                        decoration: const InputDecoration(
-                          contentPadding:
-                              EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                        ),
-                        items: ServiceTypeEnum.values.map((t) {
-                          return DropdownMenuItem(
-                            value: t,
-                            child: Row(
-                              children: [
-                                Icon(t.icon, color: t.color, size: 18),
-                                const SizedBox(width: 10),
-                                Text(t.displayLabel),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                        onChanged: (val) {
-                          if (val != null) {
-                            setState(() => _selectedType = val);
-                          }
-                        },
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Description
-                      AppTextField(
-                        controller: _descController,
-                        label: 'Description / Available Amenities',
-                        hint: 'e.g. 10 emergency beds, oxygen cylinders, 2 ambulances stationed...',
-                        maxLines: 3,
-                        prefixIcon: Icons.description_outlined,
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Coordinates
-                      Row(
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 600),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Form Card
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: AppTextField(
-                              controller: _latController,
-                              label: 'Latitude',
-                              hint: '19.9975',
-                              prefixIcon: Icons.pin_drop_outlined,
-                              isRequired: true,
-                              keyboardType: const TextInputType.numberWithOptions(
-                                  decimal: true),
-                              validator: (val) =>
-                                  double.tryParse(val ?? '') == null
-                                      ? 'Latitude required'
-                                      : null,
+                          const Text(
+                            'Facility Information',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: AppTextField(
-                              controller: _lngController,
-                              label: 'Longitude',
-                              hint: '73.7898',
-                              prefixIcon: Icons.pin_drop_outlined,
-                              isRequired: true,
-                              keyboardType: const TextInputType.numberWithOptions(
-                                  decimal: true),
-                              validator: (val) =>
-                                  double.tryParse(val ?? '') == null
-                                      ? 'Longitude required'
-                                      : null,
+                          const SizedBox(height: 16),
+
+                          // Service Name
+                          AppTextField(
+                            controller: _nameController,
+                            label: 'Facility Name',
+                            hint: 'e.g. Ram Kund First Aid Post #2',
+                            prefixIcon: Icons.business_rounded,
+                            isRequired: true,
+                            validator: (val) =>
+                                (val == null || val.trim().isEmpty)
+                                    ? 'Facility name is required'
+                                    : null,
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Service Type Dropdown
+                          const Text(
+                            'Facility Category *',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.onSurface,
                             ),
+                          ),
+                          const SizedBox(height: 6),
+                          DropdownButtonFormField<ServiceTypeEnum>(
+                            initialValue: _selectedType,
+                            decoration: const InputDecoration(
+                              contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 14),
+                            ),
+                            items: ServiceTypeEnum.values.map((t) {
+                              return DropdownMenuItem(
+                                value: t,
+                                child: Row(
+                                  children: [
+                                    Icon(t.icon, color: t.color, size: 18),
+                                    const SizedBox(width: 10),
+                                    Text(t.displayLabel),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (val) {
+                              if (val != null) {
+                                setState(() => _selectedType = val);
+                              }
+                            },
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Description / Address
+                          AppTextField(
+                            controller: _descController,
+                            label: 'Location Description / Available Amenities',
+                            hint: 'e.g. Near Ram Kund Ghat, Panchavati. Has 10 emergency beds...',
+                            maxLines: 3,
+                            prefixIcon: Icons.description_outlined,
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Coordinates
+                          Row(
+                            children: [
+                              Expanded(
+                                child: AppTextField(
+                                  controller: _latController,
+                                  label: 'Latitude',
+                                  hint: '19.9975',
+                                  prefixIcon: Icons.pin_drop_outlined,
+                                  isRequired: true,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                          decimal: true),
+                                  validator: (val) =>
+                                      double.tryParse(val ?? '') == null
+                                          ? 'Required'
+                                          : null,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: AppTextField(
+                                  controller: _lngController,
+                                  label: 'Longitude',
+                                  hint: '73.7898',
+                                  prefixIcon: Icons.pin_drop_outlined,
+                                  isRequired: true,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                          decimal: true),
+                                  validator: (val) =>
+                                      double.tryParse(val ?? '') == null
+                                          ? 'Required'
+                                          : null,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: OutlinedButton.icon(
+                              icon: const Icon(Icons.map_rounded, size: 18),
+                              label: const Text('Pick on Map (Auto-Detect Address)'),
+                              onPressed: _handlePickLocation,
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppColors.primary,
+                                side: const BorderSide(color: AppColors.primary),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Contact Person & Phone
+                          Row(
+                            children: [
+                              Expanded(
+                                child: AppTextField(
+                                  controller: _contactPersonController,
+                                  label: 'Incharge Name',
+                                  hint: 'Dr. Sharma',
+                                  prefixIcon: Icons.person_outline_rounded,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: AppTextField(
+                                  controller: _contactNumberController,
+                                  label: 'Contact Number',
+                                  hint: '+91 9876543210',
+                                  prefixIcon: Icons.phone_outlined,
+                                  keyboardType: TextInputType.phone,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Operating Hours & Quick Presets
+                          const Text(
+                            'Operating Hours',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.onSurface,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          AppTextField(
+                            controller: _hoursController,
+                            label: '',
+                            hint: 'e.g. 06:00 AM – 10:00 PM',
+                            prefixIcon: Icons.access_time_rounded,
+                            enabled: !_is24Hours,
+                          ),
+                          const SizedBox(height: 8),
+
+                          // Quick Time Presets
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              ActionChip(
+                                avatar: const Icon(Icons.all_inclusive_rounded,
+                                    size: 16),
+                                label: const Text('24x7 Open'),
+                                onPressed: () {
+                                  setState(() {
+                                    _is24Hours = true;
+                                    _hoursController.text = '24 Hours';
+                                  });
+                                },
+                              ),
+                              ActionChip(
+                                avatar: const Icon(Icons.wb_sunny_outlined,
+                                    size: 16),
+                                label: const Text('06:00 AM – 10:00 PM'),
+                                onPressed: () {
+                                  setState(() {
+                                    _is24Hours = false;
+                                    _hoursController.text =
+                                        '06:00 AM – 10:00 PM';
+                                  });
+                                },
+                              ),
+                              ActionChip(
+                                avatar: const Icon(Icons.access_time, size: 16),
+                                label: const Text('Clock Picker 🕒'),
+                                onPressed: _pickOperatingHoursClock,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+
+                          // 24 Hours Checkbox
+                          CheckboxListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text(
+                              'Open 24 Hours',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            value: _is24Hours,
+                            activeColor: AppColors.primary,
+                            onChanged: (val) {
+                              setState(() {
+                                _is24Hours = val ?? false;
+                                if (_is24Hours) {
+                                  _hoursController.text = '24 Hours';
+                                }
+                              });
+                            },
+                          ),
+
+                          // Active Switch
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text(
+                              'Active Status',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            subtitle: const Text(
+                              'Active services appear on the live pilgrim map.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.onSurfaceMuted,
+                              ),
+                            ),
+                            value: _isActive,
+                            activeTrackColor: AppColors.primary,
+                            onChanged: (val) =>
+                                setState(() => _isActive = val),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton.icon(
-                          icon: const Icon(Icons.map_rounded, size: 18),
-                          label: const Text('Pick on Map'),
-                          onPressed: _handlePickLocation,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Contact Person & Phone
-                      Row(
-                        children: [
-                          Expanded(
-                            child: AppTextField(
-                              controller: _contactPersonController,
-                              label: 'Incharge Name',
-                              hint: 'Dr. Sharma',
-                              prefixIcon: Icons.person_outline_rounded,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: AppTextField(
-                              controller: _contactNumberController,
-                              label: 'Contact Number',
-                              hint: '+91 9876543210',
-                              prefixIcon: Icons.phone_outlined,
-                              keyboardType: TextInputType.phone,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Operating Hours
-                      AppTextField(
-                        controller: _hoursController,
-                        label: 'Operating Hours',
-                        hint: 'e.g. 06:00 AM – 10:00 PM',
-                        prefixIcon: Icons.access_time_rounded,
-                        enabled: !_is24Hours,
-                      ),
-                      const SizedBox(height: 12),
-
-                      // 24 Hours Checkbox
-                      CheckboxListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text(
-                          'Open 24 Hours',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        value: _is24Hours,
-                        activeColor: AppColors.primary,
-                        onChanged: (val) {
-                          setState(() {
-                            _is24Hours = val ?? false;
-                            if (_is24Hours) {
-                              _hoursController.text = '24 Hours';
-                            }
-                          });
-                        },
-                      ),
-
-                      // Active Switch
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text(
-                          'Active Status',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        subtitle: const Text(
-                          'Active services appear on the live pilgrim map.',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.onSurfaceMuted,
-                          ),
-                        ),
-                        value: _isActive,
-                        activeTrackColor: AppColors.primary,
-                        onChanged: (val) => setState(() => _isActive = val),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(height: 24),
+                  const SizedBox(height: 24),
 
-              // Save Button
-              AppButton(
-                text: isEditing ? 'Update Facility' : 'Save Facility',
-                icon: isEditing ? Icons.save_rounded : Icons.add_rounded,
-                isLoading: isLoading,
-                onPressed: _handleSave,
+                  // Submit Button
+                  AppButton(
+                    text: isEditing ? 'Update Facility' : 'Create Facility',
+                    icon: Icons.check_circle_rounded,
+                    isLoading: isSaving,
+                    onPressed: _handleSave,
+                  ),
+                ],
               ),
-              const SizedBox(height: 32),
-            ],
+            ),
           ),
         ),
       ),

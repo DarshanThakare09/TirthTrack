@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart' as gmaps;
 import 'package:latlong2/latlong.dart';
-import '../../../core/constants/app_constants.dart';
+import '../../../core/config/app_config.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../models/sector_model.dart';
 import '../../../shared/widgets/app_text_field.dart';
@@ -26,19 +26,18 @@ class SectorDetailScreen extends ConsumerStatefulWidget {
 
 class _SectorDetailScreenState extends ConsumerState<SectorDetailScreen>
     with SingleTickerProviderStateMixin {
-  late final MapController _mapController;
+  gmaps.GoogleMapController? _mapController;
   late final TabController _tabController;
 
   @override
   void initState() {
     super.initState();
-    _mapController = MapController();
     _tabController = TabController(length: 2, vsync: this);
   }
 
   @override
   void dispose() {
-    _mapController.dispose();
+    _mapController?.dispose();
     _tabController.dispose();
     super.dispose();
   }
@@ -91,18 +90,18 @@ class _SectorDetailScreenState extends ConsumerState<SectorDetailScreen>
                             ? LatLng(currentLat, currentLng)
                             : null;
 
-                        final picked = await LocationPickerDialog.show(
+                        final result = await LocationPickerDialog.showResult(
                           context,
                           initialLocation: initial,
                           title: 'Pick Boundary Coordinate',
                         );
 
-                        if (picked != null) {
+                        if (result != null) {
                           setDialogState(() {
                             latController.text =
-                                picked.latitude.toStringAsFixed(6);
+                                result.latitude.toStringAsFixed(6);
                             lngController.text =
-                                picked.longitude.toStringAsFixed(6);
+                                result.longitude.toStringAsFixed(6);
                           });
                         }
                       },
@@ -281,87 +280,66 @@ class _SectorDetailScreenState extends ConsumerState<SectorDetailScreen>
   ) {
     return nodesAsync.when(
       data: (nodes) {
-        final polygonPoints = nodes.map((n) => n.latLng).toList();
+        final polygonPoints = nodes
+            .map((n) => gmaps.LatLng(n.latitude, n.longitude))
+            .toList();
         final initialCenter = polygonPoints.isNotEmpty
             ? polygonPoints.first
-            : AppConstants.nashikCenter;
+            : const gmaps.LatLng(
+                AppConfig.kumbhCenterLat,
+                AppConfig.kumbhCenterLng,
+              );
+
+        final polygons = <gmaps.Polygon>{};
+        final polylines = <gmaps.Polyline>{};
+
+        if (polygonPoints.length >= 3) {
+          polygons.add(
+            gmaps.Polygon(
+              polygonId: gmaps.PolygonId(sector.id),
+              points: polygonPoints,
+              fillColor: sector.displayColor.withValues(alpha: 0.25),
+              strokeColor: sector.displayColor,
+              strokeWidth: 3,
+            ),
+          );
+        } else if (polygonPoints.length == 2) {
+          polylines.add(
+            gmaps.Polyline(
+              polylineId: const gmaps.PolylineId('boundary_line'),
+              points: polygonPoints,
+              color: sector.displayColor,
+              width: 3,
+            ),
+          );
+        }
+
+        final markers = nodes.map((node) {
+          return gmaps.Marker(
+            markerId: gmaps.MarkerId(node.id),
+            position: gmaps.LatLng(node.latitude, node.longitude),
+            infoWindow: gmaps.InfoWindow(
+              title: 'Node #${node.nodeOrder}',
+              snippet:
+                  '${node.latitude.toStringAsFixed(5)}, ${node.longitude.toStringAsFixed(5)}',
+            ),
+          );
+        }).toSet();
 
         return Stack(
           children: [
-            FlutterMap(
-              mapController: _mapController,
-              options: MapOptions(
-                initialCenter: initialCenter,
-                initialZoom: polygonPoints.isNotEmpty ? 15.0 : 13.0,
-                maxZoom: 18.0,
-                minZoom: 5.0,
+            gmaps.GoogleMap(
+              initialCameraPosition: gmaps.CameraPosition(
+                target: initialCenter,
+                zoom: polygonPoints.isNotEmpty ? 15.0 : 13.5,
               ),
-              children: [
-                TileLayer(
-                  urlTemplate: AppConstants.osmTileUrl,
-                  userAgentPackageName: 'com.tirthtrack.admin',
-                ),
-
-                // Sector Polygon Layer
-                if (polygonPoints.length >= 3)
-                  PolygonLayer(
-                    polygons: [
-                      Polygon(
-                        points: polygonPoints,
-                        color: sector.displayColor.withValues(alpha: 0.25),
-                        borderColor: sector.displayColor,
-                        borderStrokeWidth: 3.0,
-                      ),
-                    ],
-                  ),
-
-                // Boundary Line if 2 nodes
-                if (polygonPoints.length == 2)
-                  PolylineLayer(
-                    polylines: [
-                      Polyline(
-                        points: polygonPoints,
-                        strokeWidth: 3.0,
-                        color: sector.displayColor,
-                      ),
-                    ],
-                  ),
-
-                // Markers for each node
-                MarkerLayer(
-                  markers: nodes.map((node) {
-                    return Marker(
-                      point: node.latLng,
-                      width: 32,
-                      height: 32,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: sector.displayColor,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Colors.black26,
-                              blurRadius: 4,
-                              offset: Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Center(
-                          child: Text(
-                            '${node.nodeOrder}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ],
+              polygons: polygons,
+              polylines: polylines,
+              markers: markers,
+              onMapCreated: (controller) => _mapController = controller,
+              myLocationEnabled: false,
+              zoomControlsEnabled: false,
+              mapToolbarEnabled: false,
             ),
 
             // Top Overlay Info Card
@@ -386,14 +364,19 @@ class _SectorDetailScreenState extends ConsumerState<SectorDetailScreen>
                 child: Row(
                   children: [
                     Container(
-                      width: 14,
-                      height: 14,
+                      width: 36,
+                      height: 36,
                       decoration: BoxDecoration(
+                        color: sector.displayColor.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        Icons.map_rounded,
                         color: sector.displayColor,
-                        shape: BoxShape.circle,
+                        size: 20,
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -401,14 +384,12 @@ class _SectorDetailScreenState extends ConsumerState<SectorDetailScreen>
                           Text(
                             sector.sectorName,
                             style: const TextStyle(
-                              fontWeight: FontWeight.w700,
                               fontSize: 14,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                           Text(
-                            nodes.length < 3
-                                ? 'Add at least ${3 - nodes.length} more node(s) to form a closed polygon boundary'
-                                : 'Boundary complete (${nodes.length} nodes)',
+                            '${nodes.length} polygon boundary nodes',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w500,
@@ -425,7 +406,12 @@ class _SectorDetailScreenState extends ConsumerState<SectorDetailScreen>
                       tooltip: 'Center on Sector',
                       onPressed: () {
                         if (polygonPoints.isNotEmpty) {
-                          _mapController.move(polygonPoints.first, 15.0);
+                          _mapController?.animateCamera(
+                            gmaps.CameraUpdate.newLatLngZoom(
+                              polygonPoints.first,
+                              15.0,
+                            ),
+                          );
                         }
                       },
                     ),

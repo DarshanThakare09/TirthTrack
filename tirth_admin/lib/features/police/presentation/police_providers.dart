@@ -22,6 +22,13 @@ final policeListProvider = FutureProvider<List<PoliceOfficerModel>>((ref) async 
   );
 });
 
+final verifiedPoliceListProvider = FutureProvider<List<PoliceOfficerModel>>((ref) async {
+  final repo = ref.watch(policeRepositoryProvider);
+  return await repo.getPoliceOfficers(
+    statusFilter: PoliceStatusEnum.verified,
+  );
+});
+
 final policeDetailProvider =
     FutureProvider.family<PoliceOfficerModel, String>((ref, policeId) async {
   final repo = ref.watch(policeRepositoryProvider);
@@ -32,6 +39,17 @@ final policeLoginCodesProvider =
     FutureProvider.family<List<PoliceLoginCodeModel>, String>((ref, policeId) async {
   final repo = ref.watch(policeRepositoryProvider);
   return await repo.getLoginCodes(policeId);
+});
+
+final loginCodeStatusFilterProvider = StateProvider<LoginCodeStatusEnum?>((ref) => null);
+final loginCodeSearchQueryProvider = StateProvider<String>((ref) => '');
+
+final allPoliceLoginCodesProvider =
+    FutureProvider<List<PoliceLoginCodeModel>>((ref) async {
+  final repo = ref.watch(policeRepositoryProvider);
+  final status = ref.watch(loginCodeStatusFilterProvider);
+  final query = ref.watch(loginCodeSearchQueryProvider);
+  return await repo.getAllLoginCodes(statusFilter: status, searchQuery: query);
 });
 
 class PoliceActionController extends StateNotifier<AsyncValue<void>> {
@@ -55,6 +73,7 @@ class PoliceActionController extends StateNotifier<AsyncValue<void>> {
       );
 
       _ref.invalidate(policeListProvider);
+      _ref.invalidate(verifiedPoliceListProvider);
       _ref.invalidate(policeDetailProvider(policeId));
       state = const AsyncValue.data(null);
       return true;
@@ -82,6 +101,7 @@ class PoliceActionController extends StateNotifier<AsyncValue<void>> {
       );
 
       _ref.invalidate(policeListProvider);
+      _ref.invalidate(verifiedPoliceListProvider);
       _ref.invalidate(policeDetailProvider(policeId));
       state = const AsyncValue.data(null);
       return true;
@@ -109,6 +129,7 @@ class PoliceActionController extends StateNotifier<AsyncValue<void>> {
       );
 
       _ref.invalidate(policeLoginCodesProvider(policeId));
+      _ref.invalidate(allPoliceLoginCodesProvider);
       state = const AsyncValue.data(null);
       return code;
     } catch (e, st) {
@@ -118,13 +139,16 @@ class PoliceActionController extends StateNotifier<AsyncValue<void>> {
   }
 
   Future<bool> revokeLoginCode({
-    required String policeId,
+    String? policeId,
     required String codeId,
   }) async {
     state = const AsyncValue.loading();
     try {
       await _repo.revokeLoginCode(codeId);
-      _ref.invalidate(policeLoginCodesProvider(policeId));
+      if (policeId != null) {
+        _ref.invalidate(policeLoginCodesProvider(policeId));
+      }
+      _ref.invalidate(allPoliceLoginCodesProvider);
       state = const AsyncValue.data(null);
       return true;
     } catch (e, st) {

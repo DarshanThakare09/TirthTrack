@@ -174,7 +174,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
             mainAxisSize: MainAxisSize.min,
             children: [
               Image.asset(
-                'assets/icons/app_logo.png',
+                'assets/image/app_logo.png',
                 color: Colors.white,
                 colorBlendMode: BlendMode.srcIn,
                 width: 270,

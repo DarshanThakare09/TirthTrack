@@ -70,18 +70,40 @@ class _PoliceBaseFormScreenState extends ConsumerState<PoliceBaseFormScreen> {
         ? LatLng(currentLat, currentLng)
         : null;
 
-    final picked = await LocationPickerDialog.show(
+    final result = await LocationPickerDialog.showResult(
       context,
       initialLocation: initialPos,
-      title: 'Pick Police Base Location',
+      title: 'Pick Police Base Location on Map',
     );
 
-    if (picked != null) {
+    if (result != null) {
       setState(() {
-        _latController.text = picked.latitude.toStringAsFixed(6);
-        _lngController.text = picked.longitude.toStringAsFixed(6);
+        _latController.text = result.latitude.toStringAsFixed(6);
+        _lngController.text = result.longitude.toStringAsFixed(6);
+        if (result.address != null && result.address!.isNotEmpty) {
+          if (_stationController.text.trim().isEmpty) {
+            _stationController.text = result.address!;
+          }
+        }
       });
+      if (mounted && result.address != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('📍 Location updated: ${result.address}'),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
+  }
+
+  void _adjustStaff(int delta) {
+    final current = int.tryParse(_staffController.text.trim()) ?? 0;
+    final updated = (current + delta).clamp(0, 9999);
+    setState(() {
+      _staffController.text = updated.toString();
+    });
   }
 
   Future<void> _handleSave() async {
@@ -119,6 +141,7 @@ class _PoliceBaseFormScreenState extends ConsumerState<PoliceBaseFormScreen> {
         .saveBase(id: widget.baseId, base: base);
 
     if (success && mounted) {
+      ref.invalidate(policeBaseListProvider);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           backgroundColor: AppColors.success,
@@ -141,211 +164,258 @@ class _PoliceBaseFormScreenState extends ConsumerState<PoliceBaseFormScreen> {
     if (isEditing) {
       final baseAsync = ref.watch(policeBaseDetailProvider(widget.baseId!));
       return baseAsync.when(
+        data: (base) {
+          _populateData(base);
+          return _buildScaffold(context, isEditing, actionState.isLoading);
+        },
         loading: () => Scaffold(
           appBar: AppBar(title: const Text('Edit Police Base')),
           body: const LoadingWidget(message: 'Loading base details...'),
         ),
-        error: (err, _) => Scaffold(
+        error: (e, _) => Scaffold(
           appBar: AppBar(title: const Text('Edit Police Base')),
-          body: ErrorStateWidget(message: err.toString()),
+          body: ErrorStateWidget(
+            message: e.toString(),
+            onRetry: () =>
+                ref.refresh(policeBaseDetailProvider(widget.baseId!)),
+          ),
         ),
-        data: (base) {
-          _populateData(base);
-          return _buildForm(isEditing: true, isLoading: actionState.isLoading);
-        },
       );
     }
 
-    return _buildForm(isEditing: false, isLoading: actionState.isLoading);
+    return _buildScaffold(context, isEditing, actionState.isLoading);
   }
 
-  Widget _buildForm({required bool isEditing, required bool isLoading}) {
+  Widget _buildScaffold(
+      BuildContext context, bool isEditing, bool isLoading) {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Text(isEditing ? 'Edit Police Base' : 'Add Police Base'),
+        title: Text(isEditing ? 'Edit Police Base' : 'Create Police Base'),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Base Details',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.onBackground,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-
-                      // Base Name
-                      AppTextField(
-                        controller: _nameController,
-                        label: 'Police Base Name',
-                        hint: 'e.g. Sector-3 Main Police Post (Panchavati)',
-                        prefixIcon: Icons.shield_rounded,
-                        isRequired: true,
-                        validator: (val) {
-                          if (val == null || val.trim().isEmpty) {
-                            return 'Base name is required';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Station & Sector
-                      Row(
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 600),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: AppTextField(
-                              controller: _stationController,
-                              label: 'Police Station',
-                              hint: 'Panchavati PS',
-                              prefixIcon: Icons.local_police_outlined,
+                          const Text(
+                            'Police Base Details',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: AppTextField(
-                              controller: _sectorController,
-                              label: 'Sector Assignment',
-                              hint: 'Sector-3 (Ramkund)',
-                              prefixIcon: Icons.map_outlined,
+                          const SizedBox(height: 16),
+
+                          // Base Name
+                          AppTextField(
+                            controller: _nameController,
+                            label: 'Base / Outpost Name',
+                            hint: 'Ramkund Police Station HQ',
+                            prefixIcon: Icons.shield_rounded,
+                            isRequired: true,
+                            validator: (val) {
+                              if (val == null || val.trim().isEmpty) {
+                                return 'Base name is required';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Station & Sector
+                          Row(
+                            children: [
+                              Expanded(
+                                child: AppTextField(
+                                  controller: _stationController,
+                                  label: 'Police Station / Area',
+                                  hint: 'Panchavati PS',
+                                  prefixIcon: Icons.local_police_outlined,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: AppTextField(
+                                  controller: _sectorController,
+                                  label: 'Sector Assignment',
+                                  hint: 'Sector-3 (Ramkund)',
+                                  prefixIcon: Icons.map_outlined,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Coordinates
+                          Row(
+                            children: [
+                              Expanded(
+                                child: AppTextField(
+                                  controller: _latController,
+                                  label: 'Latitude',
+                                  hint: '19.9975',
+                                  prefixIcon: Icons.pin_drop_outlined,
+                                  isRequired: true,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                          decimal: true),
+                                  validator: (val) =>
+                                      double.tryParse(val ?? '') == null
+                                          ? 'Latitude required'
+                                          : null,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: AppTextField(
+                                  controller: _lngController,
+                                  label: 'Longitude',
+                                  hint: '73.7898',
+                                  prefixIcon: Icons.pin_drop_outlined,
+                                  isRequired: true,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                          decimal: true),
+                                  validator: (val) =>
+                                      double.tryParse(val ?? '') == null
+                                          ? 'Longitude required'
+                                          : null,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: OutlinedButton.icon(
+                              icon: const Icon(Icons.map_rounded, size: 18),
+                              label: const Text('Pick on Map (Auto-Detect Address)'),
+                              onPressed: _handlePickLocation,
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppColors.primary,
+                                side: const BorderSide(color: AppColors.primary),
+                              ),
                             ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Incharge & Contact
+                          Row(
+                            children: [
+                              Expanded(
+                                child: AppTextField(
+                                  controller: _inchargeController,
+                                  label: 'Incharge Officer Name',
+                                  hint: 'Inspector Patil',
+                                  prefixIcon: Icons.person_outline_rounded,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: AppTextField(
+                                  controller: _contactController,
+                                  label: 'Control Room / Phone',
+                                  hint: '+91 253 2570000',
+                                  prefixIcon: Icons.phone_outlined,
+                                  keyboardType: TextInputType.phone,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Staff Count with Stepper Buttons
+                          AppTextField(
+                            controller: _staffController,
+                            label: 'Total Stationed Staff',
+                            hint: '0',
+                            prefixIcon: Icons.people_outline_rounded,
+                            keyboardType: TextInputType.number,
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              ActionChip(
+                                label: const Text('-5'),
+                                onPressed: () => _adjustStaff(-5),
+                              ),
+                              ActionChip(
+                                label: const Text('-1'),
+                                onPressed: () => _adjustStaff(-1),
+                              ),
+                              ActionChip(
+                                label: const Text('+1'),
+                                onPressed: () => _adjustStaff(1),
+                              ),
+                              ActionChip(
+                                label: const Text('+5'),
+                                onPressed: () => _adjustStaff(5),
+                              ),
+                              ActionChip(
+                                label: const Text('+10'),
+                                onPressed: () => _adjustStaff(10),
+                              ),
+                              ActionChip(
+                                label: const Text('+25'),
+                                onPressed: () => _adjustStaff(25),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Active Switch
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text(
+                              'Active Base Status',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            subtitle: const Text(
+                              'Active police bases appear on public maps and can be assigned to sectors.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.onSurfaceMuted,
+                              ),
+                            ),
+                            value: _isActive,
+                            activeTrackColor: AppColors.primary,
+                            onChanged: (val) => setState(() => _isActive = val),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
-
-                      // Coordinates
-                      Row(
-                        children: [
-                          Expanded(
-                            child: AppTextField(
-                              controller: _latController,
-                              label: 'Latitude',
-                              hint: '19.9975',
-                              prefixIcon: Icons.pin_drop_outlined,
-                              isRequired: true,
-                              keyboardType: const TextInputType.numberWithOptions(
-                                  decimal: true),
-                              validator: (val) =>
-                                  double.tryParse(val ?? '') == null
-                                      ? 'Latitude required'
-                                      : null,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: AppTextField(
-                              controller: _lngController,
-                              label: 'Longitude',
-                              hint: '73.7898',
-                              prefixIcon: Icons.pin_drop_outlined,
-                              isRequired: true,
-                              keyboardType: const TextInputType.numberWithOptions(
-                                  decimal: true),
-                              validator: (val) =>
-                                  double.tryParse(val ?? '') == null
-                                      ? 'Longitude required'
-                                      : null,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton.icon(
-                          icon: const Icon(Icons.map_rounded, size: 18),
-                          label: const Text('Pick on Map'),
-                          onPressed: _handlePickLocation,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Incharge & Contact
-                      Row(
-                        children: [
-                          Expanded(
-                            child: AppTextField(
-                              controller: _inchargeController,
-                              label: 'Incharge Officer Name',
-                              hint: 'Inspector Patil',
-                              prefixIcon: Icons.person_outline_rounded,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: AppTextField(
-                              controller: _contactController,
-                              label: 'Control Room / Phone',
-                              hint: '+91 253 2570000',
-                              prefixIcon: Icons.phone_outlined,
-                              keyboardType: TextInputType.phone,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Staff Count
-                      AppTextField(
-                        controller: _staffController,
-                        label: 'Total Stationed Staff',
-                        hint: '0',
-                        prefixIcon: Icons.people_outline_rounded,
-                        keyboardType: TextInputType.number,
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Active Switch
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text(
-                          'Active Base Status',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        subtitle: const Text(
-                          'Active police bases appear on public maps and can be assigned to sectors.',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.onSurfaceMuted,
-                          ),
-                        ),
-                        value: _isActive,
-                        activeTrackColor: AppColors.primary,
-                        onChanged: (val) => setState(() => _isActive = val),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(height: 24),
+                  const SizedBox(height: 24),
 
-              // Save Button
-              AppButton(
-                text: isEditing ? 'Update Base' : 'Save Police Base',
-                icon: isEditing ? Icons.save_rounded : Icons.add_rounded,
-                isLoading: isLoading,
-                onPressed: _handleSave,
+                  // Save Button
+                  AppButton(
+                    text: isEditing ? 'Update Base' : 'Save Police Base',
+                    icon: isEditing ? Icons.save_rounded : Icons.add_rounded,
+                    isLoading: isLoading,
+                    onPressed: _handleSave,
+                  ),
+                  const SizedBox(height: 32),
+                ],
               ),
-              const SizedBox(height: 32),
-            ],
+            ),
           ),
         ),
       ),

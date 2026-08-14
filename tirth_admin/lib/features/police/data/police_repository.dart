@@ -131,12 +131,53 @@ class PoliceRepository {
 
   // ── Police Login Codes ──────────────────────────────────────────
 
-  /// Get login codes for a police officer
+  /// Get all login codes in the system (with joined police & profile info)
+  Future<List<PoliceLoginCodeModel>> getAllLoginCodes({
+    LoginCodeStatusEnum? statusFilter,
+    String? searchQuery,
+  }) async {
+    try {
+      var query = _client
+          .from(SupabaseTable.policeLoginCodes)
+          .select('*, police_details:police_id(*, profiles:profile_id(*))');
+
+      if (statusFilter != null) {
+        query = query.eq('status', statusFilter.dbValue);
+      }
+
+      final response = await query.order('created_at', ascending: false);
+
+      final codes = (response as List<dynamic>)
+          .map((e) => PoliceLoginCodeModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+
+      if (searchQuery != null && searchQuery.trim().isNotEmpty) {
+        final q = searchQuery.trim().toLowerCase();
+        return codes.where((c) {
+          final code = c.loginCode.toLowerCase();
+          final name = c.officerName?.toLowerCase() ?? '';
+          final badge = c.badgeNumber?.toLowerCase() ?? '';
+          final station = c.policeStation?.toLowerCase() ?? '';
+          return code.contains(q) ||
+              name.contains(q) ||
+              badge.contains(q) ||
+              station.contains(q);
+        }).toList();
+      }
+
+      return codes;
+    } catch (e) {
+      appLogger.e('PoliceRepository getAllLoginCodes error: $e');
+      throw parseSupabaseException(e);
+    }
+  }
+
+  /// Get login codes for a specific police officer
   Future<List<PoliceLoginCodeModel>> getLoginCodes(String policeId) async {
     try {
       final response = await _client
           .from(SupabaseTable.policeLoginCodes)
-          .select()
+          .select('*, police_details:police_id(*, profiles:profile_id(*))')
           .eq('police_id', policeId)
           .order('created_at', ascending: false);
 
@@ -170,7 +211,7 @@ class PoliceRepository {
       final response = await _client
           .from(SupabaseTable.policeLoginCodes)
           .insert(insertData)
-          .select()
+          .select('*, police_details:police_id(*, profiles:profile_id(*))')
           .single();
 
       return PoliceLoginCodeModel.fromJson(response);

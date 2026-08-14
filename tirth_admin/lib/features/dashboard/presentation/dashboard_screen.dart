@@ -73,7 +73,7 @@ class DashboardScreen extends ConsumerWidget {
                         mainAxisSpacing: 14,
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
-                        childAspectRatio: constraints.maxWidth > 700 ? 1.5 : 1.3,
+                        childAspectRatio: constraints.maxWidth > 700 ? 1.4 : 1.15,
                         children: [
                           _MetricCard(
                             title: 'Police Officers',

@@ -328,33 +328,52 @@ class _AlertCard extends StatelessWidget {
 
             // Timestamps & Actions
             Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                const Icon(Icons.access_time_rounded,
-                    size: 14, color: AppColors.onSurfaceMuted),
-                const SizedBox(width: 4),
-                Text(
-                  'Created: ${DateFormatter.timeAgo(alert.createdAt)}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.onSurfaceMuted,
+                Expanded(
+                  child: Wrap(
+                    spacing: 12,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.access_time_rounded,
+                              size: 13, color: AppColors.onSurfaceMuted),
+                          const SizedBox(width: 4),
+                          Text(
+                            DateFormatter.timeAgo(alert.createdAt),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.onSurfaceMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (alert.expiresAt != null)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.hourglass_bottom_rounded,
+                              size: 13,
+                              color: isExpired ? AppColors.error : AppColors.onSurfaceMuted,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Expires ${DateFormatter.formatDateTime(alert.expiresAt)}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: isExpired ? FontWeight.w700 : FontWeight.w500,
+                                color: isExpired ? AppColors.error : AppColors.onSurfaceMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
                   ),
                 ),
-                if (alert.expiresAt != null) ...[
-                  const SizedBox(width: 12),
-                  const Icon(Icons.hourglass_bottom_rounded,
-                      size: 14, color: AppColors.onSurfaceMuted),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Expires: ${DateFormatter.formatDateTime(alert.expiresAt)}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: isExpired ? FontWeight.w700 : FontWeight.w500,
-                      color: isExpired ? AppColors.error : AppColors.onSurfaceMuted,
-                    ),
-                  ),
-                ],
-                const Spacer(),
-
                 // Action Menu
                 PopupMenuButton<String>(
                   icon: const Icon(Icons.more_vert_rounded, size: 20),

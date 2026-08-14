@@ -9,6 +9,8 @@ import '../../../shared/widgets/app_text_field.dart';
 import '../../../shared/widgets/state_widgets.dart';
 import 'alert_providers.dart';
 
+enum AlertAudienceEnum { allUsers, police, everyone }
+
 class AlertFormScreen extends ConsumerStatefulWidget {
   const AlertFormScreen({
     super.key,
@@ -27,6 +29,7 @@ class _AlertFormScreenState extends ConsumerState<AlertFormScreen> {
   final _messageController = TextEditingController();
   AlertTypeEnum _selectedType = AlertTypeEnum.general;
   AlertPriorityEnum _selectedPriority = AlertPriorityEnum.medium;
+  AlertAudienceEnum _selectedAudience = AlertAudienceEnum.everyone;
   DateTime? _expiresAt;
   bool _isActive = true;
   bool _isInitialized = false;
@@ -62,7 +65,8 @@ class _AlertFormScreenState extends ConsumerState<AlertFormScreen> {
       final pickedTime = await showTimePicker(
         context: context,
         initialTime: TimeOfDay.fromDateTime(
-            _expiresAt ?? now.add(const Duration(hours: 4))),
+          _expiresAt ?? now.add(const Duration(hours: 4)),
+        ),
       );
 
       if (pickedTime != null) {
@@ -168,10 +172,47 @@ class _AlertFormScreenState extends ConsumerState<AlertFormScreen> {
                       ),
                       const SizedBox(height: 18),
 
+                      // Target Audience Selector
+                      const Text(
+                        'Target Audience *',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SegmentedButton<AlertAudienceEnum>(
+                        segments: const [
+                          ButtonSegment(
+                            value: AlertAudienceEnum.everyone,
+                            label: Text('Everyone'),
+                            icon: Icon(Icons.public_rounded, size: 16),
+                          ),
+                          ButtonSegment(
+                            value: AlertAudienceEnum.allUsers,
+                            label: Text('Pilgrims'),
+                            icon: Icon(Icons.people_alt_rounded, size: 16),
+                          ),
+                          ButtonSegment(
+                            value: AlertAudienceEnum.police,
+                            label: Text('Police'),
+                            icon: Icon(Icons.local_police_rounded, size: 16),
+                          ),
+                        ],
+                        selected: {_selectedAudience},
+                        onSelectionChanged: (Set<AlertAudienceEnum> selected) {
+                          setState(() {
+                            _selectedAudience = selected.first;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 16),
+
                       // Title
                       AppTextField(
                         controller: _titleController,
-                        label: 'Broadcast Title',
+                        label: 'Broadcast Title *',
                         hint: 'e.g. Heavy Crowd Surge at Ramkund Ghat No. 2',
                         prefixIcon: Icons.campaign_rounded,
                         isRequired: true,
@@ -206,7 +247,9 @@ class _AlertFormScreenState extends ConsumerState<AlertFormScreen> {
                                   initialValue: _selectedType,
                                   decoration: const InputDecoration(
                                     contentPadding: EdgeInsets.symmetric(
-                                        horizontal: 12, vertical: 12),
+                                      horizontal: 12,
+                                      vertical: 12,
+                                    ),
                                   ),
                                   items: AlertTypeEnum.values.map((t) {
                                     return DropdownMenuItem(
@@ -249,7 +292,9 @@ class _AlertFormScreenState extends ConsumerState<AlertFormScreen> {
                                   initialValue: _selectedPriority,
                                   decoration: const InputDecoration(
                                     contentPadding: EdgeInsets.symmetric(
-                                        horizontal: 12, vertical: 12),
+                                      horizontal: 12,
+                                      vertical: 12,
+                                    ),
                                   ),
                                   items: AlertPriorityEnum.values.map((p) {
                                     return DropdownMenuItem(
@@ -279,8 +324,9 @@ class _AlertFormScreenState extends ConsumerState<AlertFormScreen> {
                       // Message Body
                       AppTextField(
                         controller: _messageController,
-                        label: 'Broadcast Message Body',
-                        hint: 'Provide clear actionable instructions, alternate route recommendations, or advisory information for pilgrims...',
+                        label: 'Broadcast Message Body *',
+                        hint:
+                            'Provide clear actionable instructions, alternate route recommendations, or advisory information for pilgrims...',
                         maxLines: 4,
                         isRequired: true,
                         validator: (val) {
@@ -307,7 +353,9 @@ class _AlertFormScreenState extends ConsumerState<AlertFormScreen> {
                         borderRadius: BorderRadius.circular(12),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 14),
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
                           decoration: BoxDecoration(
                             color: AppColors.surfaceVariant,
                             borderRadius: BorderRadius.circular(12),
@@ -315,8 +363,11 @@ class _AlertFormScreenState extends ConsumerState<AlertFormScreen> {
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.calendar_today_rounded,
-                                  size: 18, color: AppColors.primary),
+                              const Icon(
+                                Icons.calendar_today_rounded,
+                                size: 18,
+                                color: AppColors.primary,
+                              ),
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Text(
@@ -336,13 +387,68 @@ class _AlertFormScreenState extends ConsumerState<AlertFormScreen> {
                               ),
                               if (_expiresAt != null)
                                 IconButton(
-                                  icon: const Icon(Icons.clear_rounded, size: 18),
+                                  icon: const Icon(
+                                    Icons.clear_rounded,
+                                    size: 18,
+                                  ),
                                   onPressed: () =>
                                       setState(() => _expiresAt = null),
                                 ),
                             ],
                           ),
                         ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          ActionChip(
+                            label: const Text('+2 Hours'),
+                            onPressed: () {
+                              setState(() {
+                                _expiresAt =
+                                    DateTime.now().add(const Duration(hours: 2));
+                              });
+                            },
+                          ),
+                          ActionChip(
+                            label: const Text('+6 Hours'),
+                            onPressed: () {
+                              setState(() {
+                                _expiresAt =
+                                    DateTime.now().add(const Duration(hours: 6));
+                              });
+                            },
+                          ),
+                          ActionChip(
+                            label: const Text('+24 Hours'),
+                            onPressed: () {
+                              setState(() {
+                                _expiresAt =
+                                    DateTime.now().add(const Duration(hours: 24));
+                              });
+                            },
+                          ),
+                          ActionChip(
+                            label: const Text('+2 Days'),
+                            onPressed: () {
+                              setState(() {
+                                _expiresAt =
+                                    DateTime.now().add(const Duration(days: 2));
+                              });
+                            },
+                          ),
+                          ActionChip(
+                            avatar: const Icon(Icons.clear_rounded, size: 14),
+                            label: const Text('No Expiry'),
+                            onPressed: () {
+                              setState(() {
+                                _expiresAt = null;
+                              });
+                            },
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 20),
 
@@ -357,7 +463,7 @@ class _AlertFormScreenState extends ConsumerState<AlertFormScreen> {
                           ),
                         ),
                         subtitle: const Text(
-                          'Active alerts immediately display on the pilgrim app banner and emergency feed.',
+                          'Active alerts immediately display on the pilgrim and police apps.',
                           style: TextStyle(
                             fontSize: 12,
                             color: AppColors.onSurfaceMuted,
@@ -375,7 +481,9 @@ class _AlertFormScreenState extends ConsumerState<AlertFormScreen> {
 
               // Save Button
               AppButton(
-                text: isEditing ? 'Update Broadcast' : 'Publish Alert Broadcast',
+                text: isEditing
+                    ? 'Update Broadcast'
+                    : 'Publish Alert Broadcast',
                 icon: isEditing ? Icons.save_rounded : Icons.send_rounded,
                 isLoading: isLoading,
                 onPressed: _handleSave,

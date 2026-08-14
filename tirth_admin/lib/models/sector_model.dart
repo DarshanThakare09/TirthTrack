@@ -15,6 +15,7 @@ class SectorModel extends Equatable {
     required this.updatedAt,
     this.policeBaseName,
     this.nodeCount = 0,
+    this.nodes = const [],
   });
 
   final String id;
@@ -27,6 +28,7 @@ class SectorModel extends Equatable {
   final DateTime updatedAt;
   final String? policeBaseName;
   final int nodeCount;
+  final List<SectorNodeModel> nodes;
 
   Color get displayColor {
     if (colorHex == null || colorHex!.isEmpty) return AppColors.primary;
@@ -41,8 +43,36 @@ class SectorModel extends Equatable {
     return AppColors.primary;
   }
 
+  List<LatLng> get polygonPoints {
+    final sorted = List<SectorNodeModel>.from(nodes)
+      ..sort((a, b) => a.nodeOrder.compareTo(b.nodeOrder));
+    return sorted.map((n) => n.latLng).toList();
+  }
+
+  LatLng? get centerPoint {
+    if (nodes.isEmpty) return null;
+    double latSum = 0;
+    double lngSum = 0;
+    for (final node in nodes) {
+      latSum += node.latitude;
+      lngSum += node.longitude;
+    }
+    return LatLng(latSum / nodes.length, lngSum / nodes.length);
+  }
+
   factory SectorModel.fromJson(Map<String, dynamic> json, {int nodeCount = 0}) {
     final policeBase = json['police_bases'] as Map<String, dynamic>?;
+    final rawNodes = json['sector_nodes'] as List<dynamic>?;
+    List<SectorNodeModel> parsedNodes = [];
+
+    if (rawNodes != null && rawNodes.isNotEmpty && rawNodes.first is Map<String, dynamic>) {
+      parsedNodes = rawNodes
+          .map((n) => SectorNodeModel.fromJson(n as Map<String, dynamic>))
+          .toList()
+        ..sort((a, b) => a.nodeOrder.compareTo(b.nodeOrder));
+    }
+
+    final effectiveNodeCount = parsedNodes.isNotEmpty ? parsedNodes.length : nodeCount;
 
     return SectorModel(
       id: json['id'] as String,
@@ -54,7 +84,8 @@ class SectorModel extends Equatable {
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
       policeBaseName: policeBase?['base_name'] as String?,
-      nodeCount: nodeCount,
+      nodeCount: effectiveNodeCount,
+      nodes: parsedNodes,
     );
   }
 
@@ -79,6 +110,7 @@ class SectorModel extends Equatable {
     String? colorHex,
     String? policeBaseName,
     int? nodeCount,
+    List<SectorNodeModel>? nodes,
   }) {
     return SectorModel(
       id: id,
@@ -91,6 +123,7 @@ class SectorModel extends Equatable {
       updatedAt: DateTime.now(),
       policeBaseName: policeBaseName ?? this.policeBaseName,
       nodeCount: nodeCount ?? this.nodeCount,
+      nodes: nodes ?? this.nodes,
     );
   }
 
@@ -102,6 +135,7 @@ class SectorModel extends Equatable {
         policeBaseId,
         colorHex,
         nodeCount,
+        nodes,
       ];
 }
 

@@ -70,5 +70,11 @@
 		<true/>
 		<key>UIViewControllerBasedStatusBarAppearance</key>
 		<false/>
+		<key>NSLocationWhenInUseUsageDescription</key>
+		<string>TirthTrack Admin needs location access to pinpoint and manage pilgrimage services and sectors on the map.</string>
+		<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+		<string>TirthTrack Admin needs location access to pinpoint and manage pilgrimage services and sectors on the map.</string>
+		<key>io.flutter.embedded_views_preview</key>
+		<true/>
 	</dict>
 </plist>

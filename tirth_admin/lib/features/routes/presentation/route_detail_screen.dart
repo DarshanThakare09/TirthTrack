@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart' as gmaps;
 import 'package:latlong2/latlong.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -27,7 +27,13 @@ class RouteDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _RouteDetailScreenState extends ConsumerState<RouteDetailScreen> {
-  final MapController _mapController = MapController();
+  gmaps.GoogleMapController? _mapController;
+
+  @override
+  void dispose() {
+    _mapController?.dispose();
+    super.dispose();
+  }
 
   Future<void> _showNodeDialog({RouteNodeModel? existingNode, int nextOrder = 1}) async {
     final nameController =
@@ -137,18 +143,22 @@ class _RouteDetailScreenState extends ConsumerState<RouteDetailScreen> {
                             ? LatLng(currentLat, currentLng)
                             : null;
 
-                        final picked = await LocationPickerDialog.show(
+                        final result = await LocationPickerDialog.showResult(
                           context,
                           initialLocation: initialPos,
                           title: 'Pick Waypoint Coordinates',
                         );
 
-                        if (picked != null) {
+                        if (result != null) {
                           setDialogState(() {
                             latController.text =
-                                picked.latitude.toStringAsFixed(6);
+                                result.latitude.toStringAsFixed(6);
                             lngController.text =
-                                picked.longitude.toStringAsFixed(6);
+                                result.longitude.toStringAsFixed(6);
+                            if (result.address != null &&
+                                nameController.text.trim().isEmpty) {
+                              nameController.text = result.address!;
+                            }
                           });
                         }
                       },
@@ -383,8 +393,35 @@ class _RouteDetailScreenState extends ConsumerState<RouteDetailScreen> {
                     data: (nodes) {
                       // Map View if nodes exist
                       if (nodes.isNotEmpty) {
-                        final points = nodes.map((n) => n.latLng).toList();
+                        final points = nodes
+                            .map((n) => gmaps.LatLng(n.latitude, n.longitude))
+                            .toList();
                         final center = points.first;
+
+                        final polylines = <gmaps.Polyline>{
+                          gmaps.Polyline(
+                            polylineId: const gmaps.PolylineId('route_path'),
+                            points: points,
+                            color: AppColors.primary,
+                            width: 5,
+                            startCap: gmaps.Cap.roundCap,
+                            endCap: gmaps.Cap.roundCap,
+                          ),
+                        };
+
+                        final markers = nodes.map((n) {
+                          return gmaps.Marker(
+                            markerId: gmaps.MarkerId(n.id),
+                            position:
+                                gmaps.LatLng(n.latitude, n.longitude),
+                            infoWindow: gmaps.InfoWindow(
+                              title: '#${n.nodeOrder} ${n.nodeName}',
+                              snippet: n.distanceFromStartKm != null
+                                  ? '${n.distanceFromStartKm!.toStringAsFixed(1)} km from start'
+                                  : null,
+                            ),
+                          );
+                        }).toSet();
 
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -401,55 +438,17 @@ class _RouteDetailScreenState extends ConsumerState<RouteDetailScreen> {
                                 border: Border.all(color: AppColors.border),
                               ),
                               clipBehavior: Clip.antiAlias,
-                              child: FlutterMap(
-                                mapController: _mapController,
-                                options: MapOptions(
-                                  initialCenter: center,
-                                  initialZoom: 14.0,
+                              child: gmaps.GoogleMap(
+                                initialCameraPosition: gmaps.CameraPosition(
+                                  target: center,
+                                  zoom: 14.0,
                                 ),
-                                children: [
-                                  TileLayer(
-                                    urlTemplate:
-                                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                                    userAgentPackageName: 'com.tirthtrack.admin',
-                                  ),
-                                  PolylineLayer(
-                                    polylines: [
-                                      Polyline(
-                                        points: points,
-                                        color: AppColors.primary,
-                                        strokeWidth: 4.5,
-                                      ),
-                                    ],
-                                  ),
-                                  MarkerLayer(
-                                    markers: nodes.map((n) {
-                                      return Marker(
-                                        point: n.latLng,
-                                        width: 32,
-                                        height: 32,
-                                        alignment: Alignment.center,
-                                        child: Container(
-                                          decoration: BoxDecoration(
-                                            color: AppColors.primary,
-                                            shape: BoxShape.circle,
-                                            border: Border.all(
-                                                color: Colors.white, width: 2),
-                                          ),
-                                          alignment: Alignment.center,
-                                          child: Text(
-                                            '${n.nodeOrder}',
-                                            style: const TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w800,
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    }).toList(),
-                                  ),
-                                ],
+                                onMapCreated: (c) => _mapController = c,
+                                polylines: polylines,
+                                markers: markers,
+                                myLocationEnabled: false,
+                                zoomControlsEnabled: false,
+                                mapToolbarEnabled: false,
                               ),
                             ),
                             const SizedBox(height: 24),

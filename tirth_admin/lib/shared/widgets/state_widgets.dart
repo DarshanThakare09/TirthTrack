@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import 'app_button.dart';
 
+typedef AppErrorWidget = ErrorStateWidget;
+
 class LoadingWidget extends StatelessWidget {
   const LoadingWidget({
     super.key,
-    this.message = 'Loading data...',
+    String? message,
+    String? label,
     this.size = 36,
-  });
+  }) : message = label ?? message ?? 'Loading data...';
 
   final String message;
   final double size;

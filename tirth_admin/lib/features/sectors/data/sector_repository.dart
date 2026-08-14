@@ -1,3 +1,4 @@
+import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 import '../../../core/constants/supabase_constants.dart';
 import '../../../core/errors/app_exception.dart';
@@ -40,24 +41,95 @@ class SectorRepository {
     }
   }
 
-  /// Get single sector with police base info
+  /// Fetch all sectors with their full boundary polygon nodes
+  Future<List<SectorModel>> getSectorsWithNodes({String? searchQuery}) async {
+    try {
+      appLogger.d('SectorRepository: fetching sectors with nodes');
+      final response = await _client
+          .from(SupabaseTable.sectors)
+          .select('*, police_bases:police_base_id(base_name), sector_nodes(*)')
+          .order('created_at', ascending: false);
+
+      final sectors = (response as List<dynamic>).map((e) {
+        final map = e as Map<String, dynamic>;
+        return SectorModel.fromJson(map);
+      }).toList();
+
+      if (searchQuery != null && searchQuery.trim().isNotEmpty) {
+        final q = searchQuery.trim().toLowerCase();
+        return sectors.where((s) {
+          return s.sectorName.toLowerCase().contains(q) ||
+              (s.sectorCode?.toLowerCase().contains(q) ?? false) ||
+              (s.policeBaseName?.toLowerCase().contains(q) ?? false);
+        }).toList();
+      }
+
+      return sectors;
+    } catch (e) {
+      appLogger.e('SectorRepository getSectorsWithNodes error: $e');
+      throw parseSupabaseException(e);
+    }
+  }
+
+  /// Get single sector with police base info and boundary nodes
   Future<SectorModel> getSectorById(String sectorId) async {
     try {
       final response = await _client
           .from(SupabaseTable.sectors)
-          .select('*, police_bases:police_base_id(base_name), sector_nodes(id)')
+          .select('*, police_bases:police_base_id(base_name), sector_nodes(*)')
           .eq('id', sectorId)
           .single();
 
-      final nodes = (response['sector_nodes'] as List<dynamic>?) ?? [];
-      return SectorModel.fromJson(response, nodeCount: nodes.length);
+      return SectorModel.fromJson(response);
     } catch (e) {
       appLogger.e('SectorRepository getSectorById error: $e');
       throw parseSupabaseException(e);
     }
   }
 
-  /// Create sector
+  /// Create sector with its boundary nodes in a sequence
+  Future<SectorModel> createSectorWithNodes({
+    required SectorModel sector,
+    required List<LatLng> nodes,
+  }) async {
+    try {
+      appLogger.d(
+        'SectorRepository: creating sector "${sector.sectorName}" with ${nodes.length} nodes',
+      );
+
+      // 1. Insert Sector Record
+      final sectorRes = await _client
+          .from(SupabaseTable.sectors)
+          .insert(sector.toUpsertJson())
+          .select('*, police_bases:police_base_id(base_name)')
+          .single();
+
+      final createdSectorId = sectorRes['id'] as String;
+
+      // 2. Insert Node Records (1-indexed order)
+      if (nodes.isNotEmpty) {
+        final nodesData = <Map<String, dynamic>>[];
+        for (int i = 0; i < nodes.length; i++) {
+          nodesData.add({
+            'sector_id': createdSectorId,
+            'node_order': i + 1,
+            'latitude': nodes[i].latitude,
+            'longitude': nodes[i].longitude,
+          });
+        }
+
+        await _client.from(SupabaseTable.sectorNodes).insert(nodesData);
+      }
+
+      // 3. Return full sector with nodes
+      return await getSectorById(createdSectorId);
+    } catch (e) {
+      appLogger.e('SectorRepository createSectorWithNodes error: $e');
+      throw parseSupabaseException(e);
+    }
+  }
+
+  /// Create sector only
   Future<SectorModel> createSector(SectorModel sector) async {
     try {
       appLogger.d('SectorRepository: creating sector ${sector.sectorName}');
@@ -122,7 +194,9 @@ class SectorRepository {
   /// Add a boundary node to a sector
   Future<SectorNodeModel> addSectorNode(SectorNodeModel node) async {
     try {
-      appLogger.d('SectorRepository: adding node order ${node.nodeOrder} to sector ${node.sectorId}');
+      appLogger.d(
+        'SectorRepository: adding node order ${node.nodeOrder} to sector ${node.sectorId}',
+      );
       final response = await _client
           .from(SupabaseTable.sectorNodes)
           .insert(node.toUpsertJson())

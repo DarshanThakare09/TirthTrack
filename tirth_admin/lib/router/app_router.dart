@@ -8,6 +8,7 @@ import '../features/auth/presentation/auth_providers.dart';
 import '../features/auth/presentation/login_screen.dart';
 import '../features/auth/presentation/splash_screen.dart';
 import '../features/dashboard/presentation/dashboard_screen.dart';
+import '../features/police/presentation/police_code_generator_screen.dart';
 import '../features/police/presentation/police_detail_screen.dart';
 import '../features/police/presentation/police_id_viewer_screen.dart';
 import '../features/police/presentation/police_list_screen.dart';
@@ -92,7 +93,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const AccessDeniedScreen(),
       ),
 
-      // ── Authenticated Shell Routes (Admin Navigation via Drawer) ──
+      // ── Authenticated Shell Routes (Admin Navigation via BottomNav & Drawer) ──
       ShellRoute(
         navigatorKey: _shellNavigatorKey,
         builder: (context, state, child) => AdminShell(child: child),
@@ -103,7 +104,92 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const DashboardScreen(),
           ),
 
-          // Police Management
+          // Primary Tab 1: Services & Facilities
+          GoRoute(
+            path: '/services',
+            builder: (context, state) => const ServiceListScreen(),
+            routes: [
+              GoRoute(
+                path: 'new',
+                builder: (context, state) {
+                  final latStr = state.uri.queryParameters['lat'];
+                  final lngStr = state.uri.queryParameters['lng'];
+                  return ServiceFormScreen(
+                    initialLat: latStr != null ? double.tryParse(latStr) : null,
+                    initialLng: lngStr != null ? double.tryParse(lngStr) : null,
+                  );
+                },
+              ),
+              GoRoute(
+                path: ':id/edit',
+                builder: (context, state) {
+                  final id = state.pathParameters['id']!;
+                  return ServiceFormScreen(serviceId: id);
+                },
+              ),
+            ],
+          ),
+
+          // Primary Tab 2: Alerts & Broadcasts
+          GoRoute(
+            path: '/alerts',
+            builder: (context, state) => const AlertListScreen(),
+            routes: [
+              GoRoute(
+                path: 'new',
+                builder: (context, state) => const AlertFormScreen(),
+              ),
+              GoRoute(
+                path: ':id/edit',
+                builder: (context, state) {
+                  final id = state.pathParameters['id']!;
+                  return AlertFormScreen(alertId: id);
+                },
+              ),
+            ],
+          ),
+
+          // Primary Tab 3: Sector Allocation & Boundaries
+          GoRoute(
+            path: '/sectors',
+            builder: (context, state) => const SectorListScreen(),
+            routes: [
+              GoRoute(
+                path: 'new',
+                builder: (context, state) => const SectorFormScreen(),
+              ),
+              GoRoute(
+                path: ':id',
+                builder: (context, state) {
+                  final id = state.pathParameters['id']!;
+                  return SectorDetailScreen(sectorId: id);
+                },
+                routes: [
+                  GoRoute(
+                    path: 'edit',
+                    builder: (context, state) {
+                      final id = state.pathParameters['id']!;
+                      return SectorFormScreen(sectorId: id);
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+
+          // Primary Tab 4: Police Code Generator
+          GoRoute(
+            path: '/police-codes',
+            builder: (context, state) => const PoliceCodeGeneratorScreen(),
+          ),
+
+          // Primary Tab 5: Admin Profile & Credentials
+          GoRoute(
+            path: '/profile',
+            builder: (context, state) => const AdminProfileScreen(),
+          ),
+
+          // Police Management (Drawer)
           GoRoute(
             path: '/police',
             builder: (context, state) {
@@ -126,7 +212,6 @@ final routerProvider = Provider<GoRouter>((ref) {
                       if (extra is PoliceOfficerModel) {
                         return PoliceLoginCodesScreen(officer: extra);
                       }
-                      // Fallback loading officer from provider
                       return Consumer(
                         builder: (context, ref, _) {
                           final officerAsync =
@@ -173,7 +258,26 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
 
-          // Routes & Route Nodes
+          // Police Bases (Drawer)
+          GoRoute(
+            path: '/police-bases',
+            builder: (context, state) => const PoliceBaseListScreen(),
+            routes: [
+              GoRoute(
+                path: 'new',
+                builder: (context, state) => const PoliceBaseFormScreen(),
+              ),
+              GoRoute(
+                path: ':id/edit',
+                builder: (context, state) {
+                  final id = state.pathParameters['id']!;
+                  return PoliceBaseFormScreen(baseId: id);
+                },
+              ),
+            ],
+          ),
+
+          // Pilgrim Routes (Drawer)
           GoRoute(
             path: '/routes',
             builder: (context, state) => const RouteListScreen(),
@@ -199,97 +303,6 @@ final routerProvider = Provider<GoRouter>((ref) {
                 ],
               ),
             ],
-          ),
-
-          // Services & Facilities
-          GoRoute(
-            path: '/services',
-            builder: (context, state) => const ServiceListScreen(),
-            routes: [
-              GoRoute(
-                path: 'new',
-                builder: (context, state) => const ServiceFormScreen(),
-              ),
-              GoRoute(
-                path: ':id/edit',
-                builder: (context, state) {
-                  final id = state.pathParameters['id']!;
-                  return ServiceFormScreen(serviceId: id);
-                },
-              ),
-            ],
-          ),
-
-          // Police Bases
-          GoRoute(
-            path: '/police-bases',
-            builder: (context, state) => const PoliceBaseListScreen(),
-            routes: [
-              GoRoute(
-                path: 'new',
-                builder: (context, state) => const PoliceBaseFormScreen(),
-              ),
-              GoRoute(
-                path: ':id/edit',
-                builder: (context, state) {
-                  final id = state.pathParameters['id']!;
-                  return PoliceBaseFormScreen(baseId: id);
-                },
-              ),
-            ],
-          ),
-
-          // Sectors & Boundary Nodes
-          GoRoute(
-            path: '/sectors',
-            builder: (context, state) => const SectorListScreen(),
-            routes: [
-              GoRoute(
-                path: 'new',
-                builder: (context, state) => const SectorFormScreen(),
-              ),
-              GoRoute(
-                path: ':id',
-                builder: (context, state) {
-                  final id = state.pathParameters['id']!;
-                  return SectorDetailScreen(sectorId: id);
-                },
-                routes: [
-                  GoRoute(
-                    path: 'edit',
-                    builder: (context, state) {
-                      final id = state.pathParameters['id']!;
-                      return SectorFormScreen(sectorId: id);
-                    },
-                  ),
-                ],
-              ),
-            ],
-          ),
-
-          // Alerts & Broadcasts
-          GoRoute(
-            path: '/alerts',
-            builder: (context, state) => const AlertListScreen(),
-            routes: [
-              GoRoute(
-                path: 'new',
-                builder: (context, state) => const AlertFormScreen(),
-              ),
-              GoRoute(
-                path: ':id/edit',
-                builder: (context, state) {
-                  final id = state.pathParameters['id']!;
-                  return AlertFormScreen(alertId: id);
-                },
-              ),
-            ],
-          ),
-
-          // Admin Profile & Logout
-          GoRoute(
-            path: '/profile',
-            builder: (context, state) => const AdminProfileScreen(),
           ),
         ],
       ),

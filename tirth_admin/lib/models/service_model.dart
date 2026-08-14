@@ -11,7 +11,6 @@ enum ServiceTypeEnum {
   toilet,
   parking,
   fuel,
-  police,
   helpdesk,
   atm,
   pharmacy,
@@ -49,8 +48,6 @@ extension ServiceTypeEnumX on ServiceTypeEnum {
         return 'Parking';
       case ServiceTypeEnum.fuel:
         return 'Fuel Station';
-      case ServiceTypeEnum.police:
-        return 'Police Post';
       case ServiceTypeEnum.helpdesk:
         return 'Helpdesk / Info';
       case ServiceTypeEnum.atm:
@@ -84,8 +81,6 @@ extension ServiceTypeEnumX on ServiceTypeEnum {
         return Icons.local_parking_rounded;
       case ServiceTypeEnum.fuel:
         return Icons.local_gas_station_rounded;
-      case ServiceTypeEnum.police:
-        return Icons.local_police_rounded;
       case ServiceTypeEnum.helpdesk:
         return Icons.help_outline_rounded;
       case ServiceTypeEnum.atm:
@@ -119,8 +114,6 @@ extension ServiceTypeEnumX on ServiceTypeEnum {
         return AppColors.serviceParking;
       case ServiceTypeEnum.fuel:
         return AppColors.serviceFuel;
-      case ServiceTypeEnum.police:
-        return AppColors.servicePolice;
       case ServiceTypeEnum.helpdesk:
         return AppColors.serviceHelpdesk;
       case ServiceTypeEnum.atm:
@@ -138,17 +131,53 @@ extension ServiceTypeEnumX on ServiceTypeEnum {
     }
   }
 
-  static ServiceTypeEnum fromDb(String val) {
-    switch (val.toLowerCase()) {
+  static ServiceTypeEnum fromString(String val) {
+    switch (val.toLowerCase().trim()) {
+      case 'hospital':
+        return ServiceTypeEnum.hospital;
+      case 'medical':
+      case 'first_aid':
+      case 'firstaid':
+        return ServiceTypeEnum.medical;
+      case 'food':
+      case 'annadan':
+        return ServiceTypeEnum.food;
+      case 'water':
+      case 'drinking_water':
+        return ServiceTypeEnum.water;
+      case 'toilet':
+      case 'restroom':
+      case 'washroom':
+        return ServiceTypeEnum.toilet;
+      case 'parking':
+        return ServiceTypeEnum.parking;
+      case 'fuel':
+      case 'petrol_pump':
+        return ServiceTypeEnum.fuel;
+      case 'helpdesk':
+      case 'help_desk':
+      case 'information':
+        return ServiceTypeEnum.helpdesk;
+      case 'atm':
+      case 'bank':
+        return ServiceTypeEnum.atm;
+      case 'pharmacy':
+      case 'chemist':
+      case 'medicine':
+        return ServiceTypeEnum.pharmacy;
+      case 'temple':
+      case 'ghat':
+        return ServiceTypeEnum.temple;
       case 'bus_stop':
+      case 'busstop':
+      case 'bus_stand':
         return ServiceTypeEnum.busStop;
       case 'railway_station':
+      case 'railwaystation':
+      case 'train_station':
         return ServiceTypeEnum.railwayStation;
       default:
-        return ServiceTypeEnum.values.firstWhere(
-          (e) => e.name == val.toLowerCase(),
-          orElse: () => ServiceTypeEnum.other,
-        );
+        return ServiceTypeEnum.other;
     }
   }
 }
@@ -186,42 +215,60 @@ class ServiceModel extends Equatable {
 
   LatLng get latLng => LatLng(latitude, longitude);
 
-  String get formattedHours =>
-      is24Hours ? 'Open 24 Hours' : (operatingHours ?? 'Hours Not Specified');
-
   factory ServiceModel.fromJson(Map<String, dynamic> json) {
     return ServiceModel(
       id: json['id'] as String,
       serviceName: json['service_name'] as String,
-      serviceType: ServiceTypeEnumX.fromDb(json['service_type'] as String),
+      serviceType:
+          ServiceTypeEnumX.fromString(json['service_type'] as String? ?? 'other'),
       description: json['description'] as String?,
       latitude: (json['latitude'] as num).toDouble(),
       longitude: (json['longitude'] as num).toDouble(),
       contactPerson: json['contact_person'] as String?,
       contactNumber: json['contact_number'] as String?,
       operatingHours: json['operating_hours'] as String?,
-      is24Hours: (json['is_24_hours'] as bool?) ?? false,
-      isActive: (json['is_active'] as bool?) ?? true,
-      createdAt: DateTime.parse(json['created_at'] as String),
-      updatedAt: DateTime.parse(json['updated_at'] as String),
+      is24Hours: json['is_24_hours'] as bool? ?? false,
+      isActive: json['is_active'] as bool? ?? true,
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'] as String)
+          : DateTime.now(),
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'] as String)
+          : DateTime.now(),
     );
   }
 
-  Map<String, dynamic> toUpsertJson() {
-    final map = <String, dynamic>{
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
       'service_name': serviceName,
       'service_type': serviceType.dbValue,
+      'description': description,
       'latitude': latitude,
       'longitude': longitude,
+      'contact_person': contactPerson,
+      'contact_number': contactNumber,
+      'operating_hours': operatingHours,
       'is_24_hours': is24Hours,
       'is_active': isActive,
-      'updated_at': DateTime.now().toIso8601String(),
+      'created_at': createdAt.toIso8601String(),
+      'updated_at': updatedAt.toIso8601String(),
     };
-    if (description != null) map['description'] = description;
-    if (contactPerson != null) map['contact_person'] = contactPerson;
-    if (contactNumber != null) map['contact_number'] = contactNumber;
-    if (operatingHours != null) map['operating_hours'] = operatingHours;
-    return map;
+  }
+
+  Map<String, dynamic> toUpsertJson() {
+    return {
+      'service_name': serviceName,
+      'service_type': serviceType.dbValue,
+      'description': description,
+      'latitude': latitude,
+      'longitude': longitude,
+      'contact_person': contactPerson,
+      'contact_number': contactNumber,
+      'operating_hours': operatingHours,
+      'is_24_hours': is24Hours,
+      'is_active': isActive,
+    };
   }
 
   @override
@@ -229,8 +276,12 @@ class ServiceModel extends Equatable {
         id,
         serviceName,
         serviceType,
+        description,
         latitude,
         longitude,
+        contactPerson,
+        contactNumber,
+        operatingHours,
         is24Hours,
         isActive,
       ];

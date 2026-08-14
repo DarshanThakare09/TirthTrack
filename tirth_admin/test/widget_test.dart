@@ -69,8 +69,8 @@ void main() {
       expect(node.latitude, 19.9975);
     });
 
-    test('ServiceModel all 15 types enum mapping', () {
-      expect(ServiceTypeEnum.values.length, 15);
+    test('ServiceModel all 14 types enum mapping', () {
+      expect(ServiceTypeEnum.values.length, 14);
       for (final type in ServiceTypeEnum.values) {
         expect(type.dbValue, isNotEmpty);
         expect(type.displayLabel, isNotEmpty);

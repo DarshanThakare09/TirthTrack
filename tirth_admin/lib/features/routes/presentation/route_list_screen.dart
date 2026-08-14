@@ -332,23 +332,29 @@ class _RouteCard extends StatelessWidget {
 
               // Metrics & Quick Actions
               Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  _MetricBadge(
-                    icon: Icons.straighten_rounded,
-                    label: route.formattedDistance,
+                  Expanded(
+                    child: Wrap(
+                      spacing: 12,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        _MetricBadge(
+                          icon: Icons.straighten_rounded,
+                          label: route.formattedDistance,
+                        ),
+                        _MetricBadge(
+                          icon: Icons.timer_outlined,
+                          label: route.formattedTime,
+                        ),
+                        _MetricBadge(
+                          icon: Icons.pin_drop_outlined,
+                          label: '${route.nodeCount} Waypoints',
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(width: 14),
-                  _MetricBadge(
-                    icon: Icons.timer_outlined,
-                    label: route.formattedTime,
-                  ),
-                  const SizedBox(width: 14),
-                  _MetricBadge(
-                    icon: Icons.pin_drop_outlined,
-                    label: '${route.nodeCount} Waypoints',
-                  ),
-                  const Spacer(),
-
                   // Actions menu
                   PopupMenuButton<String>(
                     icon: const Icon(Icons.more_vert_rounded, size: 20),

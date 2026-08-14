@@ -5,9 +5,10 @@
 // Full-Screen Google Maps Tab for Services
 // Features:
 //   - Full-screen Google Map canvas (100% tab height)
+//   - Shows ALL services (including Police Bases, Hospitals, Food, Water, etc.)
+//   - Custom modern vector-rendered circular badge markers
 //   - Overlay category filter chips & search bar at the top
-//   - Interactive markers for all service nodes
-//   - Bottom detail modal sheet on marker tap
+//   - Interactive markers with bottom detail modal sheet on marker tap
 // ============================================================
 
 import 'package:flutter/foundation.dart';
@@ -21,6 +22,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/config/app_config.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/utils/custom_map_marker_helper.dart';
 import '../../../../core/utils/distance_utils.dart';
 import '../../../../shared/widgets/error_widget.dart';
 import '../../../../shared/widgets/loading_widget.dart';
@@ -39,6 +41,8 @@ class _ServicesTabState extends ConsumerState<ServicesTab>
     with AutomaticKeepAliveClientMixin {
   GoogleMapController? _mapController;
   bool _hasCenteredOnUser = false;
+  Set<Marker> _cachedMarkers = {};
+  String _markerCacheKey = '';
 
   @override
   bool get wantKeepAlive => true;
@@ -81,6 +85,49 @@ class _ServicesTabState extends ConsumerState<ServicesTab>
     }
   }
 
+  Future<Set<Marker>> _generateMarkers(
+    List<ServiceModel> displayedServices,
+    ServiceModel? selectedService,
+  ) async {
+    final key =
+        '${displayedServices.map((s) => s.id).join(",")}_sel_${selectedService?.id ?? "none"}';
+    if (key == _markerCacheKey && _cachedMarkers.isNotEmpty) {
+      return _cachedMarkers;
+    }
+
+    final markers = <Marker>{};
+    for (final s in displayedServices) {
+      final isSelected = selectedService?.id == s.id;
+      final icon = await CustomMapMarkerHelper.getServiceMarker(
+        type: s.serviceType,
+        isSelected: isSelected,
+      );
+
+      markers.add(
+        Marker(
+          markerId: MarkerId(s.id),
+          position: s.googleLatLng,
+          icon: icon,
+          infoWindow: InfoWindow(
+            title: s.serviceName,
+            snippet: s.serviceType.displayLabel,
+          ),
+          onTap: () {
+            ref.read(selectedServiceProvider.notifier).state = s;
+            _mapController?.animateCamera(
+              CameraUpdate.newLatLngZoom(s.googleLatLng, 16.0),
+            );
+            _showServiceDetailSheet(context, s);
+          },
+        ),
+      );
+    }
+
+    _markerCacheKey = key;
+    _cachedMarkers = markers;
+    return markers;
+  }
+
   @override
   void dispose() {
     _mapController?.dispose();
@@ -94,6 +141,8 @@ class _ServicesTabState extends ConsumerState<ServicesTab>
     final filtered = ref.watch(filteredServicesProvider);
     final selectedType = ref.watch(serviceTypeFilterProvider);
     final selectedService = ref.watch(selectedServiceProvider);
+    final searchQuery = ref.watch(serviceSearchQueryProvider).trim();
+    final isFiltering = selectedType != null || searchQuery.isNotEmpty;
 
     ref.listen<Position?>(currentPositionProvider, (previous, next) {
       if (next != null && !_hasCenteredOnUser) {
@@ -116,63 +165,44 @@ class _ServicesTabState extends ConsumerState<ServicesTab>
         children: [
           // ── 1. Full-Screen Google Map Canvas ─────────────────────
           servicesState.when(
-            loading: () => const LoadingWidget(label: 'Loading Google Map…'),
+            loading: () => const LoadingWidget(label: 'Loading Services Map…'),
             error: (e, _) => AppErrorWidget(
               message: e.toString(),
               onRetry: () => ref.refresh(servicesProvider),
             ),
             data: (allServices) {
-              final displayedServices =
-                  filtered.isNotEmpty ? filtered : allServices;
+              final displayedServices = isFiltering ? filtered : allServices;
 
-              // Convert service items to Google Map markers
-              final markers = displayedServices.map((s) {
-                final isSelected = selectedService?.id == s.id;
-                return Marker(
-                  markerId: MarkerId(s.id),
-                  position: s.googleLatLng,
-                  infoWindow: InfoWindow(
-                    title: s.serviceName,
-                    snippet: s.serviceType.displayLabel,
-                  ),
-                  icon: isSelected
-                      ? BitmapDescriptor.defaultMarkerWithHue(
-                          BitmapDescriptor.hueYellow)
-                      : BitmapDescriptor.defaultMarkerWithHue(
-                          _getHueForType(s.serviceType)),
-                  onTap: () {
-                    ref.read(selectedServiceProvider.notifier).state = s;
-                    _mapController?.animateCamera(
-                      CameraUpdate.newLatLngZoom(s.googleLatLng, 16.0),
-                    );
-                    _showServiceDetailSheet(context, s);
-                  },
-                );
-              }).toSet();
+              return FutureBuilder<Set<Marker>>(
+                future: _generateMarkers(displayedServices, selectedService),
+                builder: (context, snapshot) {
+                  final markers = snapshot.data ?? _cachedMarkers;
 
-              return GoogleMap(
-                initialCameraPosition: CameraPosition(
-                  target: initialTarget,
-                  zoom: currentPos != null ? 15.5 : 13.5,
-                ),
-                onMapCreated: _onMapCreated,
-                markers: markers,
-                myLocationEnabled: true,
-                myLocationButtonEnabled: false,
-                zoomControlsEnabled: false,
-                zoomGesturesEnabled: true,
-                scrollGesturesEnabled: true,
-                rotateGesturesEnabled: true,
-                tiltGesturesEnabled: true,
-                compassEnabled: true,
-                mapToolbarEnabled: false,
-                gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
-                  Factory<OneSequenceGestureRecognizer>(
-                    () => ScaleGestureRecognizer(),
-                  ),
-                },
-                onTap: (_) {
-                  ref.read(selectedServiceProvider.notifier).state = null;
+                  return GoogleMap(
+                    initialCameraPosition: CameraPosition(
+                      target: initialTarget,
+                      zoom: currentPos != null ? 15.5 : 13.5,
+                    ),
+                    onMapCreated: _onMapCreated,
+                    markers: markers,
+                    myLocationEnabled: true,
+                    myLocationButtonEnabled: false,
+                    zoomControlsEnabled: false,
+                    zoomGesturesEnabled: true,
+                    scrollGesturesEnabled: true,
+                    rotateGesturesEnabled: true,
+                    tiltGesturesEnabled: true,
+                    compassEnabled: true,
+                    mapToolbarEnabled: false,
+                    gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+                      Factory<OneSequenceGestureRecognizer>(
+                        () => ScaleGestureRecognizer(),
+                      ),
+                    },
+                    onTap: (_) {
+                      ref.read(selectedServiceProvider.notifier).state = null;
+                    },
+                  );
                 },
               );
             },
@@ -194,7 +224,7 @@ class _ServicesTabState extends ConsumerState<ServicesTab>
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      color: AppColors.surface.withValues(alpha: 0.95),
+                      color: AppColors.surface.withValues(alpha: 0.96),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 4),
@@ -206,7 +236,8 @@ class _ServicesTabState extends ConsumerState<ServicesTab>
                             Expanded(
                               child: TextField(
                                 decoration: const InputDecoration(
-                                  hintText: 'Search services, hospitals, food…',
+                                  hintText:
+                                      'Search all services, police, food, medical…',
                                   border: InputBorder.none,
                                   focusedBorder: InputBorder.none,
                                   enabledBorder: InputBorder.none,
@@ -223,7 +254,7 @@ class _ServicesTabState extends ConsumerState<ServicesTab>
                                 },
                               ),
                             ),
-                            if (ref.watch(serviceSearchQueryProvider).isNotEmpty)
+                            if (searchQuery.isNotEmpty)
                               IconButton(
                                 icon: const Icon(Icons.clear_rounded, size: 18),
                                 onPressed: () {
@@ -244,9 +275,10 @@ class _ServicesTabState extends ConsumerState<ServicesTab>
                       height: 40,
                       child: ListView(
                         scrollDirection: Axis.horizontal,
+                        physics: const BouncingScrollPhysics(),
                         children: [
                           _TypeChip(
-                            label: 'All',
+                            label: 'All Services',
                             isSelected: selectedType == null,
                             icon: Icons.apps_rounded,
                             color: AppColors.primary,
@@ -274,8 +306,40 @@ class _ServicesTabState extends ConsumerState<ServicesTab>
             ),
           ),
 
-          // ── 3. Floating Action Buttons ─────────────────────────
-                   // ── Floating Vertical Map Controls ─────────────
+          // Empty filtered notice overlay
+          if (isFiltering && filtered.isEmpty && servicesState.hasValue)
+            Align(
+              alignment: Alignment.center,
+              child: Card(
+                elevation: 4,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                color: Colors.white.withValues(alpha: 0.95),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.info_outline_rounded,
+                          color: AppColors.primary, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'No facilities found matching "${selectedType?.displayLabel ?? searchQuery}"',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.onBackground,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+          // ── 3. Floating Vertical Map Controls ─────────────────────
           Positioned(
             right: 16,
             bottom: 24,
@@ -305,7 +369,8 @@ class _ServicesTabState extends ConsumerState<ServicesTab>
                       },
                       child: const Padding(
                         padding: EdgeInsets.all(10),
-                        child: Icon(Icons.add_rounded, size: 22, color: AppColors.onSurface),
+                        child: Icon(Icons.add_rounded,
+                            size: 22, color: AppColors.onSurface),
                       ),
                     ),
                   ),
@@ -322,7 +387,8 @@ class _ServicesTabState extends ConsumerState<ServicesTab>
                       },
                       child: const Padding(
                         padding: EdgeInsets.all(10),
-                        child: Icon(Icons.remove_rounded, size: 22, color: AppColors.onSurface),
+                        child: Icon(Icons.remove_rounded,
+                            size: 22, color: AppColors.onSurface),
                       ),
                     ),
                   ),
@@ -338,7 +404,8 @@ class _ServicesTabState extends ConsumerState<ServicesTab>
                       onTap: _recenterToUser,
                       child: const Padding(
                         padding: EdgeInsets.all(10),
-                        child: Icon(Icons.my_location_rounded, size: 22, color: AppColors.primary),
+                        child: Icon(Icons.my_location_rounded,
+                            size: 22, color: AppColors.primary),
                       ),
                     ),
                   ),
@@ -349,31 +416,6 @@ class _ServicesTabState extends ConsumerState<ServicesTab>
         ],
       ),
     );
-  }
-
-  double _getHueForType(ServiceTypeEnum type) {
-    switch (type) {
-      case ServiceTypeEnum.hospital:
-      case ServiceTypeEnum.medical:
-      case ServiceTypeEnum.pharmacy:
-        return BitmapDescriptor.hueRed;
-      case ServiceTypeEnum.food:
-        return BitmapDescriptor.hueOrange;
-      case ServiceTypeEnum.water:
-        return BitmapDescriptor.hueCyan;
-      case ServiceTypeEnum.toilet:
-        return BitmapDescriptor.hueViolet;
-      case ServiceTypeEnum.police:
-        return BitmapDescriptor.hueBlue;
-      case ServiceTypeEnum.helpdesk:
-        return BitmapDescriptor.hueRose;
-      case ServiceTypeEnum.parking:
-      case ServiceTypeEnum.fuel:
-      case ServiceTypeEnum.atm:
-        return BitmapDescriptor.hueGreen;
-      default:
-        return BitmapDescriptor.hueMagenta;
-    }
   }
 
   void _showServiceDetailSheet(BuildContext context, ServiceModel service) {
@@ -441,7 +483,7 @@ class _TypeChip extends StatelessWidget {
                 label,
                 style: AppTextStyles.labelSmall.copyWith(
                   color: isSelected ? Colors.white : AppColors.onSurface,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                 ),
               ),
             ],
@@ -489,11 +531,15 @@ class _ServiceDetailBottomSheet extends StatelessWidget {
             Row(
               children: [
                 Container(
-                  width: 48,
-                  height: 48,
+                  width: 50,
+                  height: 50,
                   decoration: BoxDecoration(
                     color: service.serviceType.color.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: service.serviceType.color.withValues(alpha: 0.3),
+                      width: 1.5,
+                    ),
                   ),
                   child: Icon(
                     service.serviceType.icon,
@@ -512,11 +558,12 @@ class _ServiceDetailBottomSheet extends StatelessWidget {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
+                      const SizedBox(height: 2),
                       Text(
                         service.serviceType.displayLabel,
                         style: AppTextStyles.bodySmall.copyWith(
                           color: service.serviceType.color,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ],
@@ -529,11 +576,32 @@ class _ServiceDetailBottomSheet extends StatelessWidget {
               ],
             ),
 
-            if (service.description != null && service.description!.isNotEmpty) ...[
+            if (service.description != null &&
+                service.description!.isNotEmpty) ...[
               const SizedBox(height: 12),
               Text(
                 service.description!,
                 style: AppTextStyles.bodyMedium,
+              ),
+            ],
+
+            if (service.contactPerson != null &&
+                service.contactPerson!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(Icons.person_outline_rounded,
+                      size: 16, color: AppColors.onSurfaceMuted),
+                  const SizedBox(width: 6),
+                  Text(
+                    'In-charge: ${service.contactPerson}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.onSurface,
+                    ),
+                  ),
+                ],
               ),
             ],
 
@@ -626,7 +694,7 @@ class _ServiceDetailBottomSheet extends StatelessWidget {
                         ),
                       ),
                       icon: const Icon(Icons.phone_rounded, size: 18),
-                      label: const Text('Call'),
+                      label: const Text('Call Facility'),
                       onPressed: () => launchUrl(
                         Uri.parse('tel:${service.contactNumber}'),
                       ),
@@ -645,7 +713,7 @@ class _ServiceDetailBottomSheet extends StatelessWidget {
                       ),
                     ),
                     icon: const Icon(Icons.directions_rounded, size: 18),
-                    label: const Text('Directions'),
+                    label: const Text('Get Directions'),
                     onPressed: () => launchUrl(
                       Uri.parse(
                         'https://www.google.com/maps/dir/?api=1&destination=${service.latitude},${service.longitude}',

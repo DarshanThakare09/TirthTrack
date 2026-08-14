@@ -96,7 +96,8 @@ final filteredServicesProvider = Provider<List<ServiceModel>>((ref) {
   final typeFilter = ref.watch(serviceTypeFilterProvider);
   final query = ref.watch(serviceSearchQueryProvider).toLowerCase().trim();
 
-  var filtered = services;
+  var filtered = List<ServiceModel>.from(services);
+
   if (typeFilter != null) {
     filtered = filtered
         .where((s) => s.serviceType == typeFilter)

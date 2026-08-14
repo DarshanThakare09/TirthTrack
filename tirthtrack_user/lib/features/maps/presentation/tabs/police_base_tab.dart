@@ -5,9 +5,9 @@
 // Full-Screen Google Maps Tab for Police Bases & Stations
 // Features:
 //   - Full-screen Google Map canvas (100% tab height)
-//   - Overlay search bar at top for finding stations/sectors
-//   - Interactive markers for all police bases
+//   - Custom vector-rendered Police shield badge markers
 //   - Emergency contact dialer & directions in detail sheet
+//   - Shows ONLY police bases and security posts
 // ============================================================
 
 import 'package:flutter/foundation.dart';
@@ -21,6 +21,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/config/app_config.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/utils/custom_map_marker_helper.dart';
 import '../../../../core/utils/distance_utils.dart';
 import '../../../../shared/widgets/error_widget.dart';
 import '../../../../shared/widgets/loading_widget.dart';
@@ -39,6 +40,8 @@ class _PoliceBaseTabState extends ConsumerState<PoliceBaseTab>
     with AutomaticKeepAliveClientMixin {
   GoogleMapController? _mapController;
   bool _hasCenteredOnUser = false;
+  Set<Marker> _cachedMarkers = {};
+  String _markerCacheKey = '';
 
   @override
   bool get wantKeepAlive => true;
@@ -81,6 +84,48 @@ class _PoliceBaseTabState extends ConsumerState<PoliceBaseTab>
     }
   }
 
+  Future<Set<Marker>> _generateMarkers(
+    List<PoliceBaseModel> allBases,
+    PoliceBaseModel? selectedBase,
+  ) async {
+    final key =
+        '${allBases.map((b) => b.id).join(",")}_sel_${selectedBase?.id ?? "none"}';
+    if (key == _markerCacheKey && _cachedMarkers.isNotEmpty) {
+      return _cachedMarkers;
+    }
+
+    final markers = <Marker>{};
+    for (final b in allBases) {
+      final isSelected = selectedBase?.id == b.id;
+      final icon = await CustomMapMarkerHelper.getPoliceMarker(
+        isSelected: isSelected,
+      );
+
+      markers.add(
+        Marker(
+          markerId: MarkerId(b.id),
+          position: b.googleLatLng,
+          icon: icon,
+          infoWindow: InfoWindow(
+            title: b.baseName,
+            snippet: b.stationName ?? 'Police Base',
+          ),
+          onTap: () {
+            ref.read(selectedPoliceBaseProvider.notifier).state = b;
+            _mapController?.animateCamera(
+              CameraUpdate.newLatLngZoom(b.googleLatLng, 15.5),
+            );
+            _showBaseDetailSheet(context, b);
+          },
+        ),
+      );
+    }
+
+    _markerCacheKey = key;
+    _cachedMarkers = markers;
+    return markers;
+  }
+
   @override
   void dispose() {
     _mapController?.dispose();
@@ -121,59 +166,108 @@ class _PoliceBaseTabState extends ConsumerState<PoliceBaseTab>
               onRetry: () => ref.refresh(policeBasesProvider),
             ),
             data: (allBases) {
-              final markers = allBases.map((b) {
-                final isSelected = selectedBase?.id == b.id;
-                return Marker(
-                  markerId: MarkerId(b.id),
-                  position: b.googleLatLng,
-                  infoWindow: InfoWindow(
-                    title: b.baseName,
-                    snippet: b.stationName ?? 'Police Base',
-                  ),
-                  icon: isSelected
-                      ? BitmapDescriptor.defaultMarkerWithHue(
-                          BitmapDescriptor.hueYellow)
-                      : BitmapDescriptor.defaultMarkerWithHue(
-                          BitmapDescriptor.hueBlue),
-                  onTap: () {
-                    ref.read(selectedPoliceBaseProvider.notifier).state = b;
-                    _mapController?.animateCamera(
-                      CameraUpdate.newLatLngZoom(b.googleLatLng, 15.5),
-                    );
-                    _showBaseDetailSheet(context, b);
-                  },
-                );
-              }).toSet();
+              return FutureBuilder<Set<Marker>>(
+                future: _generateMarkers(allBases, selectedBase),
+                builder: (context, snapshot) {
+                  final markers = snapshot.data ?? _cachedMarkers;
 
-              return GoogleMap(
-                initialCameraPosition: CameraPosition(
-                  target: initialTarget,
-                  zoom: currentPos != null ? 15.5 : 13.5,
-                ),
-                onMapCreated: _onMapCreated,
-                markers: markers,
-                myLocationEnabled: true,
-                myLocationButtonEnabled: false,
-                zoomControlsEnabled: false,
-                zoomGesturesEnabled: true,
-                scrollGesturesEnabled: true,
-                rotateGesturesEnabled: true,
-                tiltGesturesEnabled: true,
-                compassEnabled: true,
-                mapToolbarEnabled: false,
-                gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
-                  Factory<OneSequenceGestureRecognizer>(
-                    () => ScaleGestureRecognizer(),
-                  ),
-                },
-                onTap: (_) {
-                  ref.read(selectedPoliceBaseProvider.notifier).state = null;
+                  return GoogleMap(
+                    initialCameraPosition: CameraPosition(
+                      target: initialTarget,
+                      zoom: currentPos != null ? 15.5 : 13.5,
+                    ),
+                    onMapCreated: _onMapCreated,
+                    markers: markers,
+                    myLocationEnabled: true,
+                    myLocationButtonEnabled: false,
+                    zoomControlsEnabled: false,
+                    zoomGesturesEnabled: true,
+                    scrollGesturesEnabled: true,
+                    rotateGesturesEnabled: true,
+                    tiltGesturesEnabled: true,
+                    compassEnabled: true,
+                    mapToolbarEnabled: false,
+                    gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+                      Factory<OneSequenceGestureRecognizer>(
+                        () => ScaleGestureRecognizer(),
+                      ),
+                    },
+                    onTap: (_) {
+                      ref.read(selectedPoliceBaseProvider.notifier).state = null;
+                    },
+                  );
                 },
               );
             },
           ),
 
-          // ── 2. Floating Vertical Map Controls ─────────────
+          // ── 2. Top Emergency Notice Badge ─────────────────────────
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.95),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xFF1E40AF).withValues(alpha: 0.3),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.08),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFF6FF),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.local_police_rounded,
+                        color: Color(0xFF1E40AF),
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Police Assistance & Bases',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.onBackground,
+                            ),
+                          ),
+                          Text(
+                            'Find nearest security stations, outposts & help',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: AppColors.onSurfaceMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // ── 3. Floating Vertical Map Controls ─────────────────────
           Positioned(
             right: 16,
             bottom: 24,
@@ -203,7 +297,8 @@ class _PoliceBaseTabState extends ConsumerState<PoliceBaseTab>
                       },
                       child: const Padding(
                         padding: EdgeInsets.all(10),
-                        child: Icon(Icons.add_rounded, size: 22, color: AppColors.onSurface),
+                        child: Icon(Icons.add_rounded,
+                            size: 22, color: AppColors.onSurface),
                       ),
                     ),
                   ),
@@ -220,7 +315,8 @@ class _PoliceBaseTabState extends ConsumerState<PoliceBaseTab>
                       },
                       child: const Padding(
                         padding: EdgeInsets.all(10),
-                        child: Icon(Icons.remove_rounded, size: 22, color: AppColors.onSurface),
+                        child: Icon(Icons.remove_rounded,
+                            size: 22, color: AppColors.onSurface),
                       ),
                     ),
                   ),
@@ -236,7 +332,8 @@ class _PoliceBaseTabState extends ConsumerState<PoliceBaseTab>
                       onTap: _recenterToUser,
                       child: const Padding(
                         padding: EdgeInsets.all(10),
-                        child: Icon(Icons.my_location_rounded, size: 22, color: AppColors.primary),
+                        child: Icon(Icons.my_location_rounded,
+                            size: 22, color: AppColors.primary),
                       ),
                     ),
                   ),
@@ -296,16 +393,20 @@ class _PoliceBaseDetailBottomSheet extends StatelessWidget {
             Row(
               children: [
                 Container(
-                  width: 48,
-                  height: 48,
+                  width: 50,
+                  height: 50,
                   decoration: BoxDecoration(
-                    color: AppColors.servicePolice.withValues(alpha: 0.15),
+                    color: const Color(0xFFEFF6FF),
                     borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: const Color(0xFF1E40AF).withValues(alpha: 0.3),
+                      width: 1.5,
+                    ),
                   ),
                   child: const Icon(
                     Icons.local_police_rounded,
-                    color: AppColors.servicePolice,
-                    size: 26,
+                    color: Color(0xFF1E40AF),
+                    size: 28,
                   ),
                 ),
                 const SizedBox(width: 14),
@@ -319,14 +420,15 @@ class _PoliceBaseDetailBottomSheet extends StatelessWidget {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      if (base.stationName != null)
-                        Text(
-                          base.stationName!,
-                          style: AppTextStyles.bodySmall.copyWith(
-                            color: AppColors.servicePolice,
-                            fontWeight: FontWeight.w600,
-                          ),
+                      const SizedBox(height: 2),
+                      Text(
+                        base.stationName ?? 'Police Outpost / Chowki',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF1E40AF),
+                          fontWeight: FontWeight.w700,
                         ),
+                      ),
                     ],
                   ),
                 ),
@@ -341,10 +443,10 @@ class _PoliceBaseDetailBottomSheet extends StatelessWidget {
 
             // Station Metadata & Staff Details
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: AppColors.surfaceVariant,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(14),
               ),
               child: Column(
                 children: [
@@ -355,7 +457,7 @@ class _PoliceBaseDetailBottomSheet extends StatelessWidget {
                       value: base.sectorName!,
                     ),
                   if (base.inchargeName != null) ...[
-                    const Divider(height: 12),
+                    const Divider(height: 14),
                     _DetailRow(
                       icon: Icons.badge_outlined,
                       label: 'In-charge Officer',
@@ -363,15 +465,15 @@ class _PoliceBaseDetailBottomSheet extends StatelessWidget {
                     ),
                   ],
                   if (base.totalStaff > 0) ...[
-                    const Divider(height: 12),
+                    const Divider(height: 14),
                     _DetailRow(
                       icon: Icons.group_outlined,
                       label: 'Total Staff On Duty',
-                      value: '${base.totalStaff} Personnel',
+                      value: '${base.totalStaff} Officers',
                     ),
                   ],
                   if (base.distanceKm != null) ...[
-                    const Divider(height: 12),
+                    const Divider(height: 14),
                     _DetailRow(
                       icon: Icons.straighten_rounded,
                       label: 'Distance',
@@ -394,16 +496,19 @@ class _PoliceBaseDetailBottomSheet extends StatelessWidget {
                     child: OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 12),
-                        side: const BorderSide(color: AppColors.servicePolice),
+                        side: const BorderSide(color: Color(0xFF1E40AF)),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
                       icon: const Icon(Icons.phone_rounded,
-                          size: 18, color: AppColors.servicePolice),
+                          size: 18, color: Color(0xFF1E40AF)),
                       label: const Text(
                         'Call Station',
-                        style: TextStyle(color: AppColors.servicePolice),
+                        style: TextStyle(
+                          color: Color(0xFF1E40AF),
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                       onPressed: () => launchUrl(
                         Uri.parse('tel:${base.contactNumber}'),
@@ -416,14 +521,17 @@ class _PoliceBaseDetailBottomSheet extends StatelessWidget {
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      backgroundColor: AppColors.servicePolice,
+                      backgroundColor: const Color(0xFF1E40AF),
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
                     icon: const Icon(Icons.directions_rounded, size: 18),
-                    label: const Text('Directions'),
+                    label: const Text(
+                      'Get Directions',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
                     onPressed: () => launchUrl(
                       Uri.parse(
                         'https://www.google.com/maps/dir/?api=1&destination=${base.latitude},${base.longitude}',
@@ -473,7 +581,7 @@ class _DetailRow extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: AppTextStyles.labelMedium.copyWith(
               fontWeight: FontWeight.bold,
-              color: valueColor ?? AppColors.onSurface,
+              color: valueColor ?? AppColors.onBackground,
             ),
           ),
         ),

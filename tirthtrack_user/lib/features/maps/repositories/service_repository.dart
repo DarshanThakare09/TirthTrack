@@ -15,7 +15,7 @@ class ServiceRepository {
 
   final SupabaseClient _client;
 
-  /// Fetch all active services.
+  /// Fetch all active public services from `services` table.
   /// Optionally sorted by nearest first when [userLat]/[userLng] provided.
   Future<List<ServiceModel>> fetchActiveServices({
     double? userLat,
@@ -23,6 +23,7 @@ class ServiceRepository {
   }) async {
     try {
       appLogger.d('ServiceRepository: fetching active services');
+
       final data = await _client
           .from(SupabaseTable.services)
           .select()
@@ -45,6 +46,7 @@ class ServiceRepository {
               (a.distanceKm ?? double.infinity)
                   .compareTo(b.distanceKm ?? double.infinity));
       }
+
       return services;
     } on PostgrestException catch (e) {
       appLogger.e('ServiceRepository fetchActiveServices: ${e.message}');
@@ -62,32 +64,8 @@ class ServiceRepository {
     double? userLng,
   }) async {
     try {
-      final data = await _client
-          .from(SupabaseTable.services)
-          .select()
-          .eq('is_active', true)
-          .eq('service_type', type.dbValue)
-          .order('service_name');
-
-      var services = (data as List)
-          .map((json) =>
-              ServiceModel.fromJson(json as Map<String, dynamic>))
-          .toList();
-
-      if (userLat != null && userLng != null) {
-        services = services.map((s) {
-          final km = DistanceUtils.haversineKm(
-              userLat, userLng, s.latitude, s.longitude);
-          return s.withDistance(km);
-        }).toList()
-          ..sort((a, b) =>
-              (a.distanceKm ?? double.infinity)
-                  .compareTo(b.distanceKm ?? double.infinity));
-      }
-      return services;
-    } on PostgrestException catch (e) {
-      appLogger.e('ServiceRepository fetchByType: ${e.message}');
-      throw ServerException(e.message);
+      final all = await fetchActiveServices(userLat: userLat, userLng: userLng);
+      return all.where((s) => s.serviceType == type).toList();
     } catch (e) {
       appLogger.e('ServiceRepository fetchByType unexpected: $e');
       throw const UnknownException();

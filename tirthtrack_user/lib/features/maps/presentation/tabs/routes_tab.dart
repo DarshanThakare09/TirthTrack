@@ -6,7 +6,7 @@
 // Features:
 //   - Full-screen Google Map canvas (100% tab height)
 //   - Floating route selector chips overlay at the top
-//   - Custom Polylines and Waypoint Markers for active routes
+//   - Custom vector-rendered Waypoint Node Markers (1, 2, 3...)
 //   - Interactive Bottom Sheet on route or node tap
 // ============================================================
 
@@ -21,6 +21,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/config/app_config.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/utils/custom_map_marker_helper.dart';
 import '../../../../shared/widgets/error_widget.dart';
 import '../../../../shared/widgets/loading_widget.dart';
 import '../../../location/providers/location_provider.dart';
@@ -38,6 +39,8 @@ class _RoutesTabState extends ConsumerState<RoutesTab>
     with AutomaticKeepAliveClientMixin {
   GoogleMapController? _mapController;
   bool _hasCenteredOnUser = false;
+  Set<Marker> _cachedMarkers = {};
+  String _markerCacheKey = '';
 
   @override
   bool get wantKeepAlive => true;
@@ -78,6 +81,58 @@ class _RoutesTabState extends ConsumerState<RoutesTab>
     } else {
       _initUserLocation();
     }
+  }
+
+  Future<Set<Marker>> _generateNodeMarkers(
+    List<RouteNodeModel> nodes,
+    RouteModel? selectedRoute,
+  ) async {
+    if (nodes.isEmpty || selectedRoute == null) {
+      return {};
+    }
+
+    final key =
+        '${selectedRoute.id}_${nodes.map((n) => "${n.id}_${n.nodeOrder}").join(",")}';
+    if (key == _markerCacheKey && _cachedMarkers.isNotEmpty) {
+      return _cachedMarkers;
+    }
+
+    final markers = <Marker>{};
+    for (int i = 0; i < nodes.length; i++) {
+      final n = nodes[i];
+      final isStart = i == 0;
+      final isEnd = i == nodes.length - 1;
+
+      final icon = await CustomMapMarkerHelper.getRouteNodeMarker(
+        order: n.nodeOrder,
+        isStart: isStart,
+        isEnd: isEnd,
+      );
+
+      markers.add(
+        Marker(
+          markerId: MarkerId(n.id),
+          position: n.googleLatLng,
+          infoWindow: InfoWindow(
+            title: isStart
+                ? '🚩 Start: ${n.nodeName}'
+                : (isEnd ? '🏁 End: ${n.nodeName}' : '#${n.nodeOrder} ${n.nodeName}'),
+            snippet: isStart
+                ? 'Route Starting Point'
+                : (isEnd ? 'Destination Waypoint' : 'Waypoint #${n.nodeOrder}'),
+          ),
+          icon: icon,
+          onTap: () {
+            _showRouteDetailSheet(context, selectedRoute, nodes,
+                tappedNode: n);
+          },
+        ),
+      );
+    }
+
+    _markerCacheKey = key;
+    _cachedMarkers = markers;
+    return markers;
   }
 
   @override
@@ -143,64 +198,34 @@ class _RoutesTabState extends ConsumerState<RoutesTab>
                 );
               }
 
-              // Construct markers for route nodes & user location
-              final markers = <Marker>{};
+              return FutureBuilder<Set<Marker>>(
+                future: _generateNodeMarkers(nodes, selectedRoute),
+                builder: (context, snapshot) {
+                  final markers = snapshot.data ?? _cachedMarkers;
 
-              if (nodes.isNotEmpty && selectedRoute != null) {
-                for (int i = 0; i < nodes.length; i++) {
-                  final n = nodes[i];
-                  final isStart = i == 0;
-                  final isEnd = i == nodes.length - 1;
-
-                  final hue = isStart
-                      ? BitmapDescriptor.hueGreen
-                      : (isEnd
-                          ? BitmapDescriptor.hueRed
-                          : BitmapDescriptor.hueAzure);
-
-                  markers.add(
-                    Marker(
-                      markerId: MarkerId(n.id),
-                      position: n.googleLatLng,
-                      infoWindow: InfoWindow(
-                        title: n.nodeName,
-                        snippet: isStart
-                            ? 'Start Point'
-                            : (isEnd
-                                ? 'End Point'
-                                : 'Waypoint #${n.nodeOrder}'),
-                      ),
-                      icon: BitmapDescriptor.defaultMarkerWithHue(hue),
-                      onTap: () {
-                        _showRouteDetailSheet(context, selectedRoute, nodes,
-                            tappedNode: n);
-                      },
+                  return GoogleMap(
+                    initialCameraPosition: CameraPosition(
+                      target: initialTarget,
+                      zoom: currentPos != null ? 15.5 : 13.5,
                     ),
+                    onMapCreated: _onMapCreated,
+                    polylines: polylines,
+                    markers: markers,
+                    myLocationEnabled: true,
+                    myLocationButtonEnabled: false,
+                    zoomControlsEnabled: false,
+                    zoomGesturesEnabled: true,
+                    scrollGesturesEnabled: true,
+                    rotateGesturesEnabled: true,
+                    tiltGesturesEnabled: true,
+                    compassEnabled: true,
+                    mapToolbarEnabled: false,
+                    gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+                      Factory<OneSequenceGestureRecognizer>(
+                        () => ScaleGestureRecognizer(),
+                      ),
+                    },
                   );
-                }
-              }
-
-              return GoogleMap(
-                initialCameraPosition: CameraPosition(
-                  target: initialTarget,
-                  zoom: currentPos != null ? 15.5 : 13.5,
-                ),
-                onMapCreated: _onMapCreated,
-                polylines: polylines,
-                markers: markers,
-                myLocationEnabled: true,
-                myLocationButtonEnabled: false,
-                zoomControlsEnabled: false,
-                zoomGesturesEnabled: true,
-                scrollGesturesEnabled: true,
-                rotateGesturesEnabled: true,
-                tiltGesturesEnabled: true,
-                compassEnabled: true,
-                mapToolbarEnabled: false,
-                gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
-                  Factory<OneSequenceGestureRecognizer>(
-                    () => ScaleGestureRecognizer(),
-                  ),
                 },
               );
             },
@@ -235,6 +260,7 @@ class _RoutesTabState extends ConsumerState<RoutesTab>
                       ),
                       child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
+                        physics: const BouncingScrollPhysics(),
                         child: Row(
                           children: [
                             Padding(
@@ -267,8 +293,9 @@ class _RoutesTabState extends ConsumerState<RoutesTab>
                                     avatar: Icon(
                                       Icons.route_rounded,
                                       size: 16,
-                                      color:
-                                          isSel ? Colors.white : AppColors.primary,
+                                      color: isSel
+                                          ? Colors.white
+                                          : AppColors.primary,
                                     ),
                                     label: Text(r.routeName),
                                     selected: isSel,
@@ -340,7 +367,8 @@ class _RoutesTabState extends ConsumerState<RoutesTab>
                       },
                       child: const Padding(
                         padding: EdgeInsets.all(10),
-                        child: Icon(Icons.add_rounded, size: 22, color: AppColors.onSurface),
+                        child: Icon(Icons.add_rounded,
+                            size: 22, color: AppColors.onSurface),
                       ),
                     ),
                   ),
@@ -357,7 +385,8 @@ class _RoutesTabState extends ConsumerState<RoutesTab>
                       },
                       child: const Padding(
                         padding: EdgeInsets.all(10),
-                        child: Icon(Icons.remove_rounded, size: 22, color: AppColors.onSurface),
+                        child: Icon(Icons.remove_rounded,
+                            size: 22, color: AppColors.onSurface),
                       ),
                     ),
                   ),
@@ -373,7 +402,8 @@ class _RoutesTabState extends ConsumerState<RoutesTab>
                       onTap: _recenterToUser,
                       child: const Padding(
                         padding: EdgeInsets.all(10),
-                        child: Icon(Icons.my_location_rounded, size: 22, color: AppColors.primary),
+                        child: Icon(Icons.my_location_rounded,
+                            size: 22, color: AppColors.primary),
                       ),
                     ),
                   ),
@@ -547,6 +577,7 @@ class _RouteDetailBottomSheet extends StatelessWidget {
                 height: 70,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
                   itemCount: nodes.length,
                   separatorBuilder: (_, __) => const Icon(
                     Icons.arrow_forward_rounded,

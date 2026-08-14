@@ -17,7 +17,6 @@ enum ServiceTypeEnum {
   toilet,
   parking,
   fuel,
-  police,
   helpdesk,
   atm,
   pharmacy,
@@ -55,8 +54,6 @@ extension ServiceTypeEnumX on ServiceTypeEnum {
         return 'Parking';
       case ServiceTypeEnum.fuel:
         return 'Fuel';
-      case ServiceTypeEnum.police:
-        return 'Police';
       case ServiceTypeEnum.helpdesk:
         return 'Help Desk';
       case ServiceTypeEnum.atm:
@@ -90,8 +87,6 @@ extension ServiceTypeEnumX on ServiceTypeEnum {
         return Icons.local_parking_rounded;
       case ServiceTypeEnum.fuel:
         return Icons.local_gas_station_rounded;
-      case ServiceTypeEnum.police:
-        return Icons.local_police_rounded;
       case ServiceTypeEnum.helpdesk:
         return Icons.help_outline_rounded;
       case ServiceTypeEnum.atm:
@@ -125,8 +120,6 @@ extension ServiceTypeEnumX on ServiceTypeEnum {
         return AppColors.serviceParking;
       case ServiceTypeEnum.fuel:
         return AppColors.serviceFuel;
-      case ServiceTypeEnum.police:
-        return AppColors.servicePolice;
       case ServiceTypeEnum.helpdesk:
         return AppColors.serviceHelpdesk;
       case ServiceTypeEnum.atm:
@@ -143,41 +136,55 @@ extension ServiceTypeEnumX on ServiceTypeEnum {
         return AppColors.serviceOther;
     }
   }
-}
 
-ServiceTypeEnum serviceTypeFromDb(String? value) {
-  if (value == null) return ServiceTypeEnum.other;
-  switch (value) {
-    case 'hospital':
-      return ServiceTypeEnum.hospital;
-    case 'medical':
-      return ServiceTypeEnum.medical;
-    case 'food':
-      return ServiceTypeEnum.food;
-    case 'water':
-      return ServiceTypeEnum.water;
-    case 'toilet':
-      return ServiceTypeEnum.toilet;
-    case 'parking':
-      return ServiceTypeEnum.parking;
-    case 'fuel':
-      return ServiceTypeEnum.fuel;
-    case 'police':
-      return ServiceTypeEnum.police;
-    case 'helpdesk':
-      return ServiceTypeEnum.helpdesk;
-    case 'atm':
-      return ServiceTypeEnum.atm;
-    case 'pharmacy':
-      return ServiceTypeEnum.pharmacy;
-    case 'temple':
-      return ServiceTypeEnum.temple;
-    case 'bus_stop':
-      return ServiceTypeEnum.busStop;
-    case 'railway_station':
-      return ServiceTypeEnum.railwayStation;
-    default:
-      return ServiceTypeEnum.other;
+  static ServiceTypeEnum fromString(String val) {
+    switch (val.toLowerCase().trim()) {
+      case 'hospital':
+        return ServiceTypeEnum.hospital;
+      case 'medical':
+      case 'first_aid':
+      case 'firstaid':
+        return ServiceTypeEnum.medical;
+      case 'food':
+      case 'annadan':
+        return ServiceTypeEnum.food;
+      case 'water':
+      case 'drinking_water':
+        return ServiceTypeEnum.water;
+      case 'toilet':
+      case 'restroom':
+      case 'washroom':
+        return ServiceTypeEnum.toilet;
+      case 'parking':
+        return ServiceTypeEnum.parking;
+      case 'fuel':
+      case 'petrol_pump':
+        return ServiceTypeEnum.fuel;
+      case 'helpdesk':
+      case 'help_desk':
+      case 'information':
+        return ServiceTypeEnum.helpdesk;
+      case 'atm':
+      case 'bank':
+        return ServiceTypeEnum.atm;
+      case 'pharmacy':
+      case 'chemist':
+      case 'medicine':
+        return ServiceTypeEnum.pharmacy;
+      case 'temple':
+      case 'ghat':
+        return ServiceTypeEnum.temple;
+      case 'bus_stop':
+      case 'busstop':
+      case 'bus_stand':
+        return ServiceTypeEnum.busStop;
+      case 'railway_station':
+      case 'railwaystation':
+      case 'train_station':
+        return ServiceTypeEnum.railwayStation;
+      default:
+        return ServiceTypeEnum.other;
+    }
   }
 }
 
@@ -193,9 +200,9 @@ class ServiceModel extends Equatable {
     this.contactNumber,
     this.operatingHours,
     this.is24Hours = false,
-    required this.isActive,
-    required this.createdAt,
-    required this.updatedAt,
+    this.isActive = true,
+    this.createdAt,
+    this.updatedAt,
     this.distanceKm,
   });
 
@@ -210,53 +217,91 @@ class ServiceModel extends Equatable {
   final String? operatingHours;
   final bool is24Hours;
   final bool isActive;
-  final DateTime createdAt;
-  final DateTime updatedAt;
-
-  /// Computed client-side distance (not in DB).
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
   final double? distanceKm;
 
   LatLng get latLng => LatLng(latitude, longitude);
   gmaps.LatLng get googleLatLng => gmaps.LatLng(latitude, longitude);
 
-  factory ServiceModel.fromJson(Map<String, dynamic> json,
-      {double? distanceKm}) {
+  String get formattedDistance {
+    if (distanceKm == null) return '';
+    if (distanceKm! < 1.0) {
+      return '${(distanceKm! * 1000).round()} m';
+    }
+    return '${distanceKm!.toStringAsFixed(1)} km';
+  }
+
+  ServiceModel withDistance(double distance) {
+    return ServiceModel(
+      id: id,
+      serviceName: serviceName,
+      serviceType: serviceType,
+      description: description,
+      latitude: latitude,
+      longitude: longitude,
+      contactPerson: contactPerson,
+      contactNumber: contactNumber,
+      operatingHours: operatingHours,
+      is24Hours: is24Hours,
+      isActive: isActive,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      distanceKm: distance,
+    );
+  }
+
+  factory ServiceModel.fromJson(Map<String, dynamic> json) {
     return ServiceModel(
       id: json['id'] as String,
       serviceName: json['service_name'] as String,
-      serviceType: serviceTypeFromDb(json['service_type'] as String?),
+      serviceType:
+          ServiceTypeEnumX.fromString(json['service_type'] as String? ?? 'other'),
       description: json['description'] as String?,
       latitude: (json['latitude'] as num).toDouble(),
       longitude: (json['longitude'] as num).toDouble(),
       contactPerson: json['contact_person'] as String?,
       contactNumber: json['contact_number'] as String?,
       operatingHours: json['operating_hours'] as String?,
-      is24Hours: (json['is_24_hours'] as bool?) ?? false,
-      isActive: (json['is_active'] as bool?) ?? true,
-      createdAt: DateTime.parse(json['created_at'] as String),
-      updatedAt: DateTime.parse(json['updated_at'] as String),
-      distanceKm: distanceKm,
+      is24Hours: json['is_24_hours'] as bool? ?? false,
+      isActive: json['is_active'] as bool? ?? true,
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'] as String)
+          : null,
+      updatedAt: json['updated_at'] != null
+          ? DateTime.tryParse(json['updated_at'] as String)
+          : null,
     );
   }
 
-  ServiceModel withDistance(double km) =>
-      ServiceModel(
-        id: id,
-        serviceName: serviceName,
-        serviceType: serviceType,
-        description: description,
-        latitude: latitude,
-        longitude: longitude,
-        contactPerson: contactPerson,
-        contactNumber: contactNumber,
-        operatingHours: operatingHours,
-        is24Hours: is24Hours,
-        isActive: isActive,
-        createdAt: createdAt,
-        updatedAt: updatedAt,
-        distanceKm: km,
-      );
+  Map<String, dynamic> toJson() {
+    return {
+      'service_name': serviceName,
+      'service_type': serviceType.dbValue,
+      'description': description,
+      'latitude': latitude,
+      'longitude': longitude,
+      'contact_person': contactPerson,
+      'contact_number': contactNumber,
+      'operating_hours': operatingHours,
+      'is_24_hours': is24Hours,
+      'is_active': isActive,
+    };
+  }
 
   @override
-  List<Object?> get props => [id, serviceName, serviceType, latitude, longitude];
+  List<Object?> get props => [
+        id,
+        serviceName,
+        serviceType,
+        description,
+        latitude,
+        longitude,
+        contactPerson,
+        contactNumber,
+        operatingHours,
+        is24Hours,
+        isActive,
+        distanceKm,
+      ];
 }

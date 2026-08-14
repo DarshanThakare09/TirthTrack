@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/config/app_config.dart';
+import 'core/services/local_notification_service.dart';
 import 'core/theme/app_theme.dart';
 import 'core/utils/logger.dart';
 import 'router/app_router.dart';
@@ -39,6 +40,14 @@ void main() async {
     appLogger.i("Supabase initialized successfully.");
   } catch (e) {
     appLogger.e("Failed to initialize Supabase: $e");
+  }
+
+  // Initialize Local Notifications
+  try {
+    await LocalNotificationService.instance.initialize();
+    appLogger.i("Local Notification Service initialized successfully.");
+  } catch (e) {
+    appLogger.e("Failed to initialize Local Notification Service: $e");
   }
 
   runApp(

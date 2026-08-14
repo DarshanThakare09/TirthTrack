@@ -2,11 +2,14 @@
 // shared/widgets/main_shell.dart
 // ============================================================
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/services/local_notification_service.dart';
 import '../../core/services/location_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../features/location/providers/location_provider.dart';
@@ -26,12 +29,23 @@ class MainShell extends ConsumerStatefulWidget {
 
 class _MainShellState extends ConsumerState<MainShell>
     with WidgetsBindingObserver {
+  StreamSubscription<String?>? _notificationTapSub;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _ensureLocationActive();
+      LocalNotificationService.instance.requestPermissions();
+    });
+
+    // Listen for notification tap events to navigate to Alerts screen
+    _notificationTapSub =
+        LocalNotificationService.instance.onNotificationTapped.listen((payload) {
+      if (mounted) {
+        context.push(AppRoutes.notifications);
+      }
     });
   }
 
@@ -39,12 +53,15 @@ class _MainShellState extends ConsumerState<MainShell>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _ensureLocationActive();
+      ref.read(alertsProvider.notifier).refresh();
+      ref.read(notificationsProvider.notifier).refresh();
     }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _notificationTapSub?.cancel();
     super.dispose();
   }
 
@@ -62,7 +79,11 @@ class _MainShellState extends ConsumerState<MainShell>
 
   @override
   Widget build(BuildContext context) {
-    final unreadCount = ref.watch(unreadNotificationCountProvider);
+    // Keep alerts and notifications providers active for Realtime & periodic sync
+    ref.watch(alertsProvider);
+    ref.watch(notificationsProvider);
+    final totalCount =
+        ref.watch(totalNotificationsAndAlertsCountProvider);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: const SystemUiOverlayStyle(
@@ -111,10 +132,10 @@ class _MainShellState extends ConsumerState<MainShell>
                   label: 'Pilgrim AI',
                 ),
                 NavigationDestination(
-                  icon: unreadCount > 0
+                  icon: totalCount > 0
                       ? Badge(
                           label: Text(
-                            unreadCount > 99 ? '99+' : '$unreadCount',
+                            totalCount > 99 ? '99+' : '$totalCount',
                             style: const TextStyle(fontSize: 10),
                           ),
                           child: const Icon(Icons.person_outline_rounded),

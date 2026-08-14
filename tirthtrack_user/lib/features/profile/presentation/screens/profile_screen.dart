@@ -16,6 +16,7 @@ import '../../../../shared/widgets/app_button.dart';
 import '../../../../shared/widgets/error_widget.dart';
 import '../../../../shared/widgets/loading_widget.dart';
 import '../../../authentication/providers/auth_provider.dart';
+import '../../../notifications/providers/notification_provider.dart';
 import '../../models/profile_model.dart';
 import '../../providers/profile_provider.dart';
 import '../widgets/profile_avatar_widget.dart';
@@ -27,6 +28,8 @@ class ProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final profileState = ref.watch(profileProvider);
     final photoUrlState = ref.watch(profilePhotoUrlProvider);
+    final totalNotifCount =
+        ref.watch(totalNotificationsAndAlertsCountProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -214,7 +217,40 @@ class ProfileScreen extends ConsumerWidget {
                   _ActionTile(
                     icon: Icons.notifications_none_rounded,
                     title: 'Notifications & Alerts',
-                    onTap: () => context.push(AppRoutes.notifications),
+                    trailingBadge: totalNotifCount > 0
+                        ? Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              totalNotifCount > 99
+                                  ? '99+'
+                                  : '$totalNotifCount',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          )
+                        : null,
+                    onTap: () {
+                      final alerts = ref.read(alertsProvider).valueOrNull ?? [];
+                      final activeIds = alerts
+                          .where((a) => a.isVisibleToUser)
+                          .map((a) => a.id)
+                          .toList();
+                      if (activeIds.isNotEmpty) {
+                        ref
+                            .read(seenAlertsProvider.notifier)
+                            .markAllSeen(activeIds);
+                      }
+                      ref.read(notificationsProvider.notifier).markAllRead();
+                      context.push(AppRoutes.notifications);
+                    },
                     showDivider: true,
                   ),
                   _ActionTile(
@@ -357,12 +393,14 @@ class _ActionTile extends StatelessWidget {
     required this.title,
     required this.onTap,
     this.showDivider = true,
+    this.trailingBadge,
   });
 
   final IconData icon;
   final String title;
   final VoidCallback onTap;
   final bool showDivider;
+  final Widget? trailingBadge;
 
   @override
   Widget build(BuildContext context) {
@@ -379,7 +417,16 @@ class _ActionTile extends StatelessWidget {
             child: Icon(icon, color: AppColors.iconDark, size: 20),
           ),
           title: Text(title, style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
-          trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.onSurfaceMuted),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (trailingBadge != null) ...[
+                trailingBadge!,
+                const SizedBox(width: 4),
+              ],
+              const Icon(Icons.chevron_right_rounded, color: AppColors.onSurfaceMuted),
+            ],
+          ),
           onTap: onTap,
         ),
         if (showDivider)

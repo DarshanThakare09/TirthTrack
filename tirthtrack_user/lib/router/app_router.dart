@@ -38,11 +38,15 @@ class AppRoutes {
   static const notifications = '/main/profile/notifications';
 }
 
+// ── Root Navigator Key ───────────────────────────────────────
+final rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'rootNavigator');
+
 // ── Router Provider ──────────────────────────────────────────
 final appRouterProvider = Provider<GoRouter>((ref) {
   final notifier = ref.watch(routerNotifierProvider.notifier);
 
   return GoRouter(
+    navigatorKey: rootNavigatorKey,
     initialLocation: AppRoutes.splash,
     refreshListenable: notifier,
     redirect: notifier.redirect,

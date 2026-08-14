@@ -85,6 +85,10 @@ class AlertModel extends Equatable {
   bool get isExpired =>
       expiresAt != null && expiresAt!.isBefore(DateTime.now());
 
+  /// Returns true only when active and not expired (or no expiration set).
+  bool get isVisibleToUser =>
+      isActive && (expiresAt == null || expiresAt!.isAfter(DateTime.now()));
+
   factory AlertModel.fromJson(Map<String, dynamic> json) {
     return AlertModel(
       id: json['id'] as String,
@@ -93,11 +97,11 @@ class AlertModel extends Equatable {
       alertType: alertTypeFromDb(json['alert_type'] as String?),
       priority: alertPriorityFromDb(json['priority'] as String?),
       expiresAt: json['expires_at'] != null
-          ? DateTime.parse(json['expires_at'] as String)
+          ? DateTime.parse(json['expires_at'] as String).toLocal()
           : null,
       isActive: (json['is_active'] as bool?) ?? true,
-      createdAt: DateTime.parse(json['created_at'] as String),
-      updatedAt: DateTime.parse(json['updated_at'] as String),
+      createdAt: DateTime.parse(json['created_at'] as String).toLocal(),
+      updatedAt: DateTime.parse(json['updated_at'] as String).toLocal(),
     );
   }
 
@@ -145,12 +149,12 @@ class NotificationModel extends Equatable {
               .firstOrNull ?? NotificationStatusEnum.pending,
       isRead: (json['is_read'] as bool?) ?? false,
       sentAt: json['sent_at'] != null
-          ? DateTime.parse(json['sent_at'] as String)
+          ? DateTime.parse(json['sent_at'] as String).toLocal()
           : null,
       readAt: json['read_at'] != null
-          ? DateTime.parse(json['read_at'] as String)
+          ? DateTime.parse(json['read_at'] as String).toLocal()
           : null,
-      createdAt: DateTime.parse(json['created_at'] as String),
+      createdAt: DateTime.parse(json['created_at'] as String).toLocal(),
     );
   }
 
